@@ -14,6 +14,7 @@
 #define _SPLINTERDB_H_
 
 #include "splinterdb/data.h"
+#include <stdlib.h>
 
 // Get a version string for this build of SplinterDB
 // Currently a git tag
@@ -422,4 +423,15 @@ splinterdb_stats_print_lookup(const splinterdb *kvs);
 void
 splinterdb_stats_reset(splinterdb *kvs);
 
+uint64_t
+splinterdb_get_num_of_loads(splinterdb *kvs);
+
+uint64_t
+splinterdb_get_num_of_stores(splinterdb *kvs);
+
+void
+splinterdb_clear_stats(splinterdb *kvs);
+
+void
+        splinterdb_print_stats(splinterdb *kvs);
 #endif // _SPLINTERDB_H_
