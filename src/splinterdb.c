@@ -853,18 +853,18 @@ splinterdb_get_memtable_context_handle(const splinterdb *kvs)
 
 uint64_t
 splinterdb_get_num_of_loads(splinterdb *kvs) {
-    return kvs->cache_handle.number_of_loads;
+    return &kvs->cache_handle.number_of_loads;
 }
 
 uint64_t
 splinterdb_get_num_of_stores(splinterdb *kvs) {
-    return kvs->cache_handle.number_of_stores;
+    return &kvs->cache_handle.number_of_stores;
 }
 
 void
 splinterdb_clear_stats(splinterdb *kvs) {
-    kvs->cache_handle.number_of_loads = 0;
-    kvs->cache_handle.number_of_stores = 0;
+    &kvs->cache_handle.number_of_loads = 0;
+    &kvs->cache_handle.number_of_stores = 0;
 }
 
 void
