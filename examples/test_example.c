@@ -33,8 +33,8 @@ void timer_stop(uint64_t *timer) {
 int next_command(FILE *input, int *op, uint64_t *arg) {
     int ret;
     char command[64];
-
-    ret = fscanf(input, "%s %ld", command, arg);
+    uint64_t *val;
+    ret = fscanf(input, "%s %lld", command, key);
     if (ret == EOF)
         return EOF;
     else if (ret != 2) {
@@ -42,18 +42,18 @@ int next_command(FILE *input, int *op, uint64_t *arg) {
         exit(3);
     }
 
-    if (strcmp(command, "Inserting") == 0) {
+    if (strcmp(command, "I") == 0) {
         *op = 0;
-    } else if (strcmp(command, "Updating") == 0) {
+    } else if (strcmp(command, "U") == 0) {
         *op = 1;
     } else if (strcmp(command, "Deleting") == 0) {
         *op = 2;
-    } else if (strcmp(command, "Query") == 0) {
+    } else if (strcmp(command, "R") == 0) {
         *op = 3;
-        if (1 != fscanf(input, " -> %s", command)) {
-            fprintf(stderr, "Parse error\n");
-            exit(3);
-        }
+//        if (1 != fscanf(input, " -> %s", command)) {
+//            fprintf(stderr, "Parse error\n");
+//            exit(3);
+//        }
     } else if (strcmp(command, "Full_scan") == 0) {
         *op = 4;
     } else if (strcmp(command, "Lower_bound_scan") == 0) {
