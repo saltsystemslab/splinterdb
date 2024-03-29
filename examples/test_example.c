@@ -41,7 +41,7 @@ int next_command(FILE *input, int *op, uint64_t *arg, int mode) {
     char *insert = mode == YCSB ? "I" : "Inserting";
     char *read = mode == YCSB ? "R" : "Query";
     char *update = mode == YCSB ? "U" : "Updating";
-    ret = fscanf(input, "%s %lld", command, arg);
+    ret = fscanf(input, "%s %ld", command, arg);
     if (ret == EOF)
         return EOF;
     else if (ret != 2) {
