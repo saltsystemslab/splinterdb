@@ -850,3 +850,25 @@ splinterdb_get_memtable_context_handle(const splinterdb *kvs)
 {
    return kvs->spl->mt_ctxt;
 }
+
+uint64_t
+splinterdb_get_num_of_loads(splinterdb *kvs) {
+    return kvs->cache_handle.number_of_loads;
+}
+
+uint64_t
+splinterdb_get_num_of_stores(splinterdb *kvs) {
+    return kvs->cache_handle.number_of_stores;
+}
+
+void
+splinterdb_clear_stats(splinterdb *kvs) {
+    kvs->cache_handle.number_of_loads = 0;
+    kvs->cache_handle.number_of_stores = 0;
+}
+
+void
+splinterdb_print_stats(splinterdb *kvs) {
+    platform_default_log("Number of loads: %llu\n", &kvs->cache_handle.number_of_loads);
+    platform_default_log("Number of stores: %llu\n", &kvs->cache_handle.number_of_stores);
+}
