@@ -140,11 +140,27 @@ int test(splinterdb *spl_handle, FILE *script_input, uint64_t nops,
                 splinterdb_lookup_result result;
                 splinterdb_lookup_result_init(spl_handle, &result, 0, NULL);
                 key = slice_create((size_t) strlen(t), t);
+                slice lookup;
                 printf("\nLookup\n");
                 splinterdb_lookup(spl_handle, key, &result);
-                splinterdb_lookup_result_value(&result, &value);
-                struct key_value_pair kv3 = {key, value};
-                res[q++] = kv3;
+                splinterdb_lookup_result_value(&result, &lookup);
+#ifdef CORRECTNESS
+                for (int j = 0; j < w; j++) {
+                    slice s_key = kvp[j].key;
+                    char* key_str = (char *)slice_data(s_key);
+                    char* user_str = (char *)slice_data(key);
+                    if (strcmp(key_str, user_str) == 0) {
+                        //! compare value
+                        char* value = (char *)slice_data(kvp[j].value);
+                        char* usr_val = (char *)slice_data(lookup);
+                        if (strcmp(value, usr_val) == 0) {
+                          break;
+                        } else {
+                            abort();
+                        }
+                    }
+                }
+#endif
                 break;
             default:
                 abort();
@@ -167,34 +183,7 @@ int test(splinterdb *spl_handle, FILE *script_input, uint64_t nops,
             timer_start(&timer);
         }
     }
-#ifdef CORRECTNESS
-    //! Perform correctness check here.
-    //! Idea: iterate through the keys, and find its corresponding value in both arrays. Once found,
-    //! compare.
-    printf("Performing correctness check\n");
-    for (int j = 0; j < q; j++) {
-        slice s_key = res[j].key;
-        slice s_value = res[j].value;
-        //! find key in other array
-        for (int k = 0; k < w; k++) {
-            char* user_key = (char *)slice_data(s_key);
-            char* found_key = (char *)slice_data(kvp[k].key);
-            if (strcmp(user_key, found_key) == 0) {
-                char* user_value = (char *)slice_data(s_value);
-                char* found_value = (char *)slice_data(kvp[k].value);
-                if (strcmp(user_value, found_value) == 0) {
-                    // Values match for the same key
-                    break;
-                }
-                else {
-                    printf("Key value mismatch for: %p, value: %p, expected %p", s_key.data, s_value.data, kvp[k].value.data);
-                    abort();
-                }
-            }
 
-        }
-    }
-#endif
 
     printf("Test PASSED\n");
     printf("######## Test result of splinterDB ########");
