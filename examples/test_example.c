@@ -177,7 +177,9 @@ int test(splinterdb *spl_handle, FILE *script_input, uint64_t nops,
         //! find key in other array
         for (int k = 0; k < w; k++) {
             if (!slice_lex_cmp(s_key, kvp[k].key)) {
-                if ((char *)slice_data(s_value) != (char *)slice_Data(kvp[k].value)) {
+                char* user_key = (char *)slice_data(s_value);
+                char* found_key = (char *)slice_data(kvp[k].value);
+                if (user_key != found_key) {
                     // Values match for the same key
                     break;
                 }
