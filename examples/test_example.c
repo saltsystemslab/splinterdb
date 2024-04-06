@@ -178,14 +178,16 @@ int test(splinterdb *spl_handle, FILE *script_input, uint64_t nops,
         for (int k = 0; k < nops/2; k++) {
             if (!slice_lex_cmp(s_key, kvp[k].key)) {
                 if (!slice_lex_cmp(s_value, kvp[k].value)) {
-                // Values match for the same key
-                break;
-            } else {
-                printf("Key value mismatch for: %p, value: %p, expected %p", s_key.data, s_value.data, kvp[k].value.data);
-                abort();
-           }
-       }
+                    // Values match for the same key
+                    break;
+                }
+                else {
+                    printf("Key value mismatch for: %p, value: %p, expected %p", s_key.data, s_value.data, kvp[k].value.data);
+                    abort();
+                }
+            }
 
+        }
     }
 #endif
 
@@ -211,7 +213,7 @@ int test(splinterdb *spl_handle, FILE *script_input, uint64_t nops,
         printf("Total IO: %" PRIu64 "\n", curr_phase_num_of_loads + curr_phase_num_of_stores);
     }
 
-    printf("\nTotal number of loads: %" PRIu64 "\n", total_num_of_loads);
+    printf("\nTotal number of loads: %" PRIu64"\n", total_num_of_loads);
     printf("Total number of stores: %" PRIu64 "\n", total_num_of_stores);
     printf("Total IO: %" PRIu64 "\n", total_num_of_loads + total_num_of_stores);
 
