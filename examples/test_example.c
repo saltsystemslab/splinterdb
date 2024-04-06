@@ -93,7 +93,8 @@ int test(splinterdb *spl_handle, FILE *script_input, uint64_t nops,
          uint64_t count_point4,
          uint64_t count_point5,
          uint64_t count_point6, int mode) {
-    key_value_pair *kvp = (key_value_pair *) malloc(nops * sizeof(key_value_pair));
+    key_value_pair *kvp = (key_value_pair *) malloc(nops/2 * sizeof(key_value_pair));
+    key_value_pair *res = (key_value_pair *) malloc(nops/2 * sizeof (key_value_pair));
     slice key, value;;
 
     uint64_t timer = 0;
@@ -143,7 +144,7 @@ int test(splinterdb *spl_handle, FILE *script_input, uint64_t nops,
                 splinterdb_lookup(spl_handle, key, &result);
                 splinterdb_lookup_result_value(&result, &value);
                 struct key_value_pair kv3 = {key, value};
-                kvp[q++] = kv3;
+                res[q++] = kv3;
                 break;
             default:
                 abort();
@@ -172,8 +173,8 @@ int test(splinterdb *spl_handle, FILE *script_input, uint64_t nops,
     //! compare.
     printf("Performing correctness check\n");
     for (int j = 0; j < q; j++) {
-        slice s_key = kvp[j].key;
-        slice s_value = kvp[j].value;
+        slice s_key = res[j].key;
+        slice s_value = res[j].value;
         //! find key in other array
         for (int k = 0; k < w; k++) {
             char* user_key = (char *)slice_data(s_key);
