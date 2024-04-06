@@ -104,6 +104,7 @@ int test(splinterdb *spl_handle, FILE *script_input, uint64_t nops,
     uint64_t num_of_loads_array[100];
     uint64_t num_of_stores_array[100];
     uint64_t section_index = 0;
+    uint64_t w = 0 , q = 0;
     timer_start(&timer);
 
     for (uint64_t i = 1; i <= nops; i++) {
@@ -127,7 +128,7 @@ int test(splinterdb *spl_handle, FILE *script_input, uint64_t nops,
                 value = slice_create((size_t) strlen(t), t);
                 splinterdb_insert(spl_handle, key, value);
                 struct key_value_pair kv = {key, value};
-                kvp[i - 1] = kv;
+                kvp[w++] = kv;
                 break;
             case 1:  // update
                 key = slice_create((size_t) strlen(t), t);
@@ -138,12 +139,11 @@ int test(splinterdb *spl_handle, FILE *script_input, uint64_t nops,
                 splinterdb_lookup_result result;
                 splinterdb_lookup_result_init(spl_handle, &result, 0, NULL);
                 key = slice_create((size_t) strlen(t), t);
-                value = slice_create((size_t) strlen(t), t);
                 printf("\nLookup\n");
                 splinterdb_lookup(spl_handle, key, &result);
                 splinterdb_lookup_result_value(&result, &value);
                 struct key_value_pair kv3 = {key, value};
-                kvp[i - 1] = kv3;
+                kvp[q++] = kv3;
                 break;
             default:
                 abort();
@@ -171,11 +171,11 @@ int test(splinterdb *spl_handle, FILE *script_input, uint64_t nops,
     //! Idea: iterate through the keys, and find its corresponding value in both arrays. Once found,
     //! compare.
     printf("Performing correctness check\n");
-    for (int j = (nops / 2) - 1; j < nops; j++) {
+    for (int j = 0; j < q; j++) {
         slice s_key = kvp[j].key;
         slice s_value = kvp[j].value;
         //! find key in other array
-        for (int k = 0; k < nops/2; k++) {
+        for (int k = 0; k < w; k++) {
             if (!slice_lex_cmp(s_key, kvp[k].key)) {
                 if (!slice_lex_cmp(s_value, kvp[k].value)) {
                     // Values match for the same key
