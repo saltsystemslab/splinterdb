@@ -176,10 +176,12 @@ int test(splinterdb *spl_handle, FILE *script_input, uint64_t nops,
         slice s_value = kvp[j].value;
         //! find key in other array
         for (int k = 0; k < w; k++) {
-            if (!slice_lex_cmp(s_key, kvp[k].key)) {
-                char* user_key = (char *)slice_data(s_value);
-                char* found_key = (char *)slice_data(kvp[k].value);
-                if (strcmp(user_key, found_key) == 0) {
+            char* user_key = (char *)slice_data(s_key);
+            char* found_key = (char *)slice_data(kvp[k].key);
+            if (strcmp(user_key, found_key) == 0) {
+                char* user_value = (char *)slice_data(s_value);
+                char* found_value = (char *)slice_data(kvp[k].value);
+                if (strcmp(user_value, found_value) == 0) {
                     // Values match for the same key
                     break;
                 }
