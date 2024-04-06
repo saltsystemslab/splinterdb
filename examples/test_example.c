@@ -94,7 +94,6 @@ int test(splinterdb *spl_handle, FILE *script_input, uint64_t nops,
          uint64_t count_point5,
          uint64_t count_point6, int mode) {
     key_value_pair *kvp = (key_value_pair *) malloc(nops/2 * sizeof(key_value_pair));
-    key_value_pair *res = (key_value_pair *) malloc(nops/2 * sizeof (key_value_pair));
     slice key, value;;
 
     uint64_t timer = 0;
@@ -105,7 +104,7 @@ int test(splinterdb *spl_handle, FILE *script_input, uint64_t nops,
     uint64_t num_of_loads_array[100];
     uint64_t num_of_stores_array[100];
     uint64_t section_index = 0;
-    uint64_t w = 0 , q = 0;
+    uint64_t w = 0;
     timer_start(&timer);
 
     for (uint64_t i = 1; i <= nops; i++) {
