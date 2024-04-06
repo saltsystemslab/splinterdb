@@ -93,7 +93,7 @@ int test(splinterdb *spl_handle, FILE *script_input, uint64_t nops,
          uint64_t count_point4,
          uint64_t count_point5,
          uint64_t count_point6, int mode) {
-    key_value_pair* kvp = (key_value_pair*) malloc(nops * sizeof(key_value_pair));
+    key_value_pair *kvp = (key_value_pair *) malloc(nops * sizeof(key_value_pair));
     slice key, value;;
 
     uint64_t timer = 0;
@@ -175,16 +175,17 @@ int test(splinterdb *spl_handle, FILE *script_input, uint64_t nops,
         slice s_key = kvp[j].key;
         slice s_value = kvp[j].value;
         //! find key in other array
-        for (int k = 0; k < nops/2 - 1; k++) {
+        for (int k = 0; k < nops/2; k++) {
             if (!slice_lex_cmp(s_key, kvp[k].key)) {
-                if (slice_lex_cmp(s_value, kvp[k].value)) {
-                    printf("Key value mismatch for: %p, value: %p, expected %p", s_key.data, s_value.data, kvp[k].value.data);
-                    abort();
-                } else {
-                    break;
-                }
-            }
-        }
+                if (!slice_lex_cmp(s_value, kvp[k].value)) {
+                // Values match for the same key
+                break;
+            } else {
+                printf("Key value mismatch for: %p, value: %p, expected %p", s_key.data, s_value.data, kvp[k].value.data);
+                abort();
+           }
+       }
+
     }
 #endif
 
