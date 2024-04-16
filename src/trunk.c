@@ -6814,8 +6814,6 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result, slice nod
     uint64 result_found_at_node_addr;
     trunk_node node;
     trunk_node temp;
-    trunk_node parent;
-    uint64 parent_addr;
     trunk_root_get(spl, &node);
 
     // release memtable lookup lock
@@ -6906,16 +6904,14 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result, slice nod
             } else {
                 trunk_root_get(spl, &temp);
                 trunk_node_claim(spl->cc, &temp);
-                trunk_node_get(spl->cc, parent_addr, &parent);
-                trunk_node_lock(spl->cc, &parent);
+                trunk_node_lock(spl->cc, &node);
             }
             trunk_flush(spl, &node, pdata, FALSE);
             if (node.addr == spl->root_addr) {
                 trunk_node_unclaim(spl->cc, &node);
                 trunk_node_unlock(spl->cc, &node);
             } else {
-                trunk_node_unlock(spl->cc, &parent);
-                trunk_node_unget(spl->cc, &parent);
+                trunk_node_unlock(spl->cc, &node);
                 trunk_node_unclaim(spl->cc, &temp);
                 trunk_node_unget(spl->cc, &temp);
             }
@@ -6934,7 +6930,6 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result, slice nod
             lower_bound = pivot_start_range;
             upper_bound = ondisk_key_to_key(&trunk_get_pivot_data(spl, &node, pivot_no + 1)->pivot);
         }
-        parent_addr = pdata->addr;
         trunk_node_unget(spl->cc, &node);
         node = child;
     }
