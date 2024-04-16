@@ -96,6 +96,8 @@ int test(splinterdb *spl_handle, FILE *script_input, uint64_t nops,
     key_value_pair *kvp = (key_value_pair *) malloc(nops/2 * sizeof(key_value_pair));
     slice key, value;;
 
+    splinterdb_lookup_result result;
+
     uint64_t timer = 0;
     uint64_t count_points_array[] = {count_point1, count_point2,
                                      count_point3, count_point4,
@@ -136,7 +138,6 @@ int test(splinterdb *spl_handle, FILE *script_input, uint64_t nops,
                 splinterdb_insert(spl_handle, key, value);
                 break;
             case 3:  // query
-                splinterdb_lookup_result result;
                 splinterdb_lookup_result_init(spl_handle, &result, 0, NULL);
                 key = slice_create((size_t) strlen(t), t);
                 slice lookup;
