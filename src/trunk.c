@@ -6934,7 +6934,7 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result, slice nod
             lower_bound = pivot_start_range;
             upper_bound = ondisk_key_to_key(&trunk_get_pivot_data(spl, &node, pivot_no + 1)->pivot);
         }
-        parent_addr = node.addr;
+        parent_addr = pdata->addr;
         trunk_node_unget(spl->cc, &node);
         node = child;
     }
@@ -6992,21 +6992,21 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result, slice nod
                 uint64 bytes_used_by_level[TRUNK_MAX_HEIGHT] = {0};
                 trunk_node_space_use(spl, temp_root.addr, bytes_used_by_level);
                 if (bytes_used_by_level[height] >= spl->cfg.max_branches_per_node * spl->cfg.memtable_capacity * 1024 * 1024) {
-                    break;
-                }
-                uint8 num_elements = (temp_root.hdr->num_aux_pivots + 1);
-                int size = num_elements * sizeof(trunk_aux_pivot);
-                if (temp_root.hdr->aux_pivot != NULL) {
-                    trunk_aux_pivot *aux_array = TYPED_ARRAY_ZALLOC(spl->heap_id, aux_array, num_elements);
-                    memcpy(aux_array, temp_root.hdr->aux_pivot, size);
-                    aux_array[num_elements] = *aux;
-                    temp_root.hdr->aux_pivot = aux_array;
-                    temp_root.hdr->num_aux_pivots = num_elements;
+                    // dont do anything
                 } else {
-                    temp_root.hdr->aux_pivot = aux;
-                    temp_root.hdr->num_aux_pivots = 1;
+                    uint8 num_elements = (temp_root.hdr->num_aux_pivots + 1);
+                    int size = num_elements * sizeof(trunk_aux_pivot);
+                    if (temp_root.hdr->aux_pivot != NULL) {
+                        trunk_aux_pivot *aux_array = TYPED_ARRAY_ZALLOC(spl->heap_id, aux_array, num_elements);
+                        memcpy(aux_array, temp_root.hdr->aux_pivot, size);
+                        aux_array[num_elements] = *aux;
+                        temp_root.hdr->aux_pivot = aux_array;
+                        temp_root.hdr->num_aux_pivots = num_elements;
+                    } else {
+                        temp_root.hdr->aux_pivot = aux;
+                        temp_root.hdr->num_aux_pivots = 1;
+                    }
                 }
-
                 break;
             }
             //! If no space, go one level down.
