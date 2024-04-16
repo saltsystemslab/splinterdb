@@ -6904,6 +6904,8 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result, slice nod
             } else {
                 trunk_root_get(spl, &temp);
                 trunk_node_claim(spl->cc, &temp);
+                // TODO claim this node
+                trunk_node_claim(spl->cc, &node);
                 trunk_node_lock(spl->cc, &node);
             }
             trunk_flush(spl, &node, pdata, FALSE);
@@ -6912,6 +6914,7 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result, slice nod
                 trunk_node_unlock(spl->cc, &node);
             } else {
                 trunk_node_unlock(spl->cc, &node);
+                trunk_node_unclaim(spl->cc, &node);
                 trunk_node_unclaim(spl->cc, &temp);
                 trunk_node_unget(spl->cc, &temp);
             }
