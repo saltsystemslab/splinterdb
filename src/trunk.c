@@ -6844,41 +6844,51 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result, slice nod
         trunk_node child;
         if (node.hdr->num_aux_pivots != 0) {
             //! see if target key falls in this range
-            key start = node.hdr->aux_pivot->range_start;
-            key end = node.hdr->aux_pivot->range_end;
-            int cmp;
-            if (start.kind == NEGATIVE_INFINITY) {
-                cmp = trunk_key_compare(spl, end, target);
-                switch (cmp) {
-                    case less_than:
-                    case less_than_or_equal:
-                        trunk_node_get(spl->cc, node.hdr->aux_pivot.node_addr, &child);
-                        hops = node.hdr->aux_pivot.num_hops;
-                        continue;
+            key start, end;
+            int idx = -1;
+            for (int i = 0; i < node.hdr->num_aux_pivots; i++) {
+                start = node.hdr->aux_pivot[i].range_start;
+                end = node.hdr->aux_pivot[i].range_end;
+                int cmp;
+                if (start.kind == NEGATIVE_INFINITY) {
+                    cmp = trunk_key_compare(spl, end, target);
+                    switch (cmp) {
+                        case less_than:
+                        case less_than_or_equal:
+                            trunk_node_get(spl->cc, node.hdr->aux_pivot[i].node_addr, &child);
+                            hops = node.hdr->aux_pivot[i].num_hops;
+                            idx = i;
+                            break;
+                    }
+                } else if (end.kind == POSITIVE_INFINITY) {
+                    cmp = trunk_key_compare(spl, start, target);
+                    switch (cmp) {
+                        case greater_than:
+                        case greater_than_or_equal:
+                            trunk_node_get(spl->cc, node.hdr->aux_pivot[i].node_addr, &child);
+                            hops = node.hdr->aux_pivot[i].num_hops;
+                            idx = i;
+                            break;
+                    }
+                } else {
+                    cmp = trunk_key_compare(spl, start, target);
+                    switch (cmp) {
+                        case greater_than:
+                        case greater_than_or_equal:
+                            //! see if target is less than 'end'
+                            cmp = trunk_key_compare(spl, end, target);
+                            if (cmp == less_than) {
+                                //! We can use this pivot
+                                trunk_node_get(spl->cc, node.hdr->aux_pivot[i].node_addr, &child);
+                                hops = node.hdr->aux_pivot[i].num_hops;
+                                idx = i;
+                                break;
+                            }
+                    }
                 }
-            } else if (end.kind == POSITIVE_INFINITY) {
-                cmp = trunk_key_compare(spl, start, target);
-                switch (cmp) {
-                    case greater_than:
-                    case greater_than_or_equal:
-                        trunk_node_get(spl->cc, node.hdr->aux_pivot.node_addr, &child);
-                        hops = node.hdr->aux_pivot.num_hops;
-                        continue;
-                }
-            } else {
-                cmp = trunk_key_compare(spl, start, target);
-                switch (cmp) {
-                    case greater_than:
-                    case greater_than_or_equal:
-                        //! see if target is less than 'end'
-                        cmp = trunk_key_compare(spl, end, target);
-                        if (cmp == less_than) {
-                            //! We can use this pivot
-                            trunk_node_get(spl->cc, node.hdr->aux_pivot.node_addr, &child);
-                            hops = node.hdr->aux_pivot.num_hops;
-                            continue;
-                        }
-                }
+            }
+            if (idx != -1) {
+                continue;
             }
         } else {
             hops = 1;
