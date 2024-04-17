@@ -6876,6 +6876,9 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result, slice nod
             }
             if (idx != -1) {
                 hops = node.hdr->aux_pivot[idx].num_hops;
+                trunk_node_get(spl->cc, node.hdr->aux_pivot[idx].node_addr, &child);
+                trunk_node_unget(spl->cc, &node);
+                node = child;
                 continue;
             }
         } else {
