@@ -7012,6 +7012,7 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result, slice nod
             //! Problem here is that we will have to read all the nodes again,
             //! but it is likely that they will be in the cache.
             //! This acts like the "recursion"
+            trunk_node_unget(spl->cc, &temp_root);
             temp_root = child;
         }
         trunk_node_unget(spl->cc, &temp_root);
