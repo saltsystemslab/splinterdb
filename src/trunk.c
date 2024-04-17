@@ -6852,7 +6852,7 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result, slice nod
                 int cmp;
                 if (start.kind == NEGATIVE_INFINITY) {
                     cmp = trunk_key_compare(spl, end, target);
-                    switch (cmp) {
+                    switch (less_than_or_equal) {
                         case less_than:
                         case less_than_or_equal:
                             trunk_node_get(spl->cc, node.hdr->aux_pivot[i].node_addr, &child);
@@ -6862,7 +6862,7 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result, slice nod
                     }
                 } else if (end.kind == POSITIVE_INFINITY) {
                     cmp = trunk_key_compare(spl, start, target);
-                    switch (cmp) {
+                    switch (greater_than_or_equal) {
                         case greater_than:
                         case greater_than_or_equal:
                             trunk_node_get(spl->cc, node.hdr->aux_pivot[i].node_addr, &child);
@@ -6872,7 +6872,7 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result, slice nod
                     }
                 } else {
                     cmp = trunk_key_compare(spl, start, target);
-                    switch (cmp) {
+                    switch (greater_than_or_equal) {
                         case greater_than:
                         case greater_than_or_equal:
                             //! see if target is less than 'end'
