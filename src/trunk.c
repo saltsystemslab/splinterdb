@@ -6968,6 +6968,9 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result, slice nod
         memtable_end_lookup(spl->mt_ctxt);
     } else {
         trunk_node_unget(spl->cc, &node);
+        platform_default_log("test %lu", aux.node_addr);
+        platform_default_log("found at %lu", result_found_at_node_addr);
+#ifdef TEST
         trunk_node temp_root;
         trunk_root_get(spl, &temp_root);
         //! Iterate through the query path array and check if we have a pointer to the
@@ -7012,6 +7015,7 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result, slice nod
             temp_root = child;
         }
         trunk_node_unget(spl->cc, &temp_root);
+#endif
     }
     if (spl->cfg.use_stats) {
         threadid tid = platform_get_tid();
