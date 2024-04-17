@@ -14,8 +14,8 @@
 #include "util.h"
 
 #define DB_FILE_NAME    "splinterdb_intro_db"
-#define DB_FILE_SIZE_MB 10000 // Size of SplinterDB device; Fixed when created
-#define CACHE_SIZE_MB   64
+#define DB_FILE_SIZE_MB 50000 // Size of SplinterDB device; Fixed when created
+#define CACHE_SIZE_MB   256
 #define USER_MAX_KEY_SIZE ((int)100)
 
 enum {

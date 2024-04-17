@@ -6985,7 +6985,7 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result, slice nod
                 break;
             } else {
                 for (int i = 0; i < temp_root.hdr->num_aux_pivots; i++) {
-                    if (temp_root.hdr->aux_pivot.node_addr == result_found_at_node_addr)
+                    if (temp_root.hdr->aux_pivot[i].node_addr == result_found_at_node_addr)
                         continue;
                 }
                 //! add P* pivot, check for space
@@ -6994,8 +6994,8 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result, slice nod
                 trunk_node_space_use(spl, temp_root.addr, bytes_used_by_level);
                 // todo check why memtable capacity is 0
                 if (bytes_used_by_level[h] >=
-                    spl->cfg.max_branches_per_node * spl->cfg.memtable_capacity * 1024 * 1024 &&
-                    temp_root.hdr->num_aux_pivots <= 8) {
+                    spl->cfg.max_branches_per_node * 4 * 1024 * 1024 &&
+                    temp_root.hdr->num_aux_pivots > 8) {
                     // dont do anything
                 } else {
                     uint8 num_elements = (temp_root.hdr->num_aux_pivots + 1);
