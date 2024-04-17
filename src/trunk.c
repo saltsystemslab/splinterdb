@@ -6851,43 +6851,32 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result, slice nod
                 end = node.hdr->aux_pivot[i].range_end;
                 int cmp;
                 if (start.kind == NEGATIVE_INFINITY) {
-                    cmp = trunk_key_compare(spl, end, target);
-                    switch (less_than_or_equal) {
-                        case less_than:
-                        case less_than_or_equal:
-                            trunk_node_get(spl->cc, node.hdr->aux_pivot[i].node_addr, &child);
-                            hops = node.hdr->aux_pivot[i].num_hops;
-                            idx = i;
-                            break;
+                    int comp = slice_lex_cmp(target.user_slice, end.user_slice);
+                    if (comp < 0) {
+                        idx = i;
+                        break;
                     }
                 } else if (end.kind == POSITIVE_INFINITY) {
-                    cmp = trunk_key_compare(spl, start, target);
-                    switch (greater_than_or_equal) {
-                        case greater_than:
-                        case greater_than_or_equal:
-                            trunk_node_get(spl->cc, node.hdr->aux_pivot[i].node_addr, &child);
-                            hops = node.hdr->aux_pivot[i].num_hops;
-                            idx = i;
-                            break;
+                    int comp = slice_lex_cmp(target.user_slice, start.user_slice);
+                    if (comp >= 0) {
+                        idx = i;
+                        break;
                     }
                 } else {
-                    cmp = trunk_key_compare(spl, start, target);
-                    switch (greater_than_or_equal) {
-                        case greater_than:
-                        case greater_than_or_equal:
-                            //! see if target is less than 'end'
-                            cmp = trunk_key_compare(spl, end, target);
-                            if (cmp == less_than) {
-                                //! We can use this pivot
-                                trunk_node_get(spl->cc, node.hdr->aux_pivot[i].node_addr, &child);
-                                hops = node.hdr->aux_pivot[i].num_hops;
-                                idx = i;
-                                break;
-                            }
+                    //! compare start first
+                    int comp_start = slice_lex_cmp(target.user_slice, start.user_slice);
+                    if (comp_start >= 0) {
+                        //! our key is greater than or equal to start key
+                        int comp_end = slice_lex_cmp(target.user_slice, end.user_slice);
+                        if (comp_end < 0) {
+                            idx = i;
+                            break;
+                        }
                     }
                 }
             }
             if (idx != -1) {
+                hops = node.hdr->aux_pivot[idx].num_hops;
                 continue;
             }
         } else {
