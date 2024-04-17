@@ -6849,7 +6849,6 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result, slice nod
             for (int i = 0; i < node.hdr->num_aux_pivots; i++) {
                 start = node.hdr->aux_pivot[i].range_start;
                 end = node.hdr->aux_pivot[i].range_end;
-                int cmp;
                 if (start.kind == NEGATIVE_INFINITY) {
                     int comp = slice_lex_cmp(target.user_slice, end.user_slice);
                     if (comp < 0) {
