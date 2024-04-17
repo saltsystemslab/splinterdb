@@ -141,7 +141,7 @@ int test(splinterdb *spl_handle, FILE *script_input, uint64_t nops,
                 splinterdb_lookup_result_init(spl_handle, &result, 0, NULL);
                 key = slice_create((size_t) strlen(t), t);
                 slice lookup;
-                printf("\nLookup\n");
+                printf("\nLookup %lu\n", i);
                 splinterdb_lookup(spl_handle, key, &result);
                 splinterdb_lookup_result_value(&result, &lookup);
 #ifdef CORRECTNESS
