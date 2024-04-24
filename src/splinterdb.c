@@ -165,7 +165,6 @@ splinterdb_init_config(const splinterdb_config *kvs_cfg, // IN
    splinterdb_config cfg = {0};
    memcpy(&cfg, kvs_cfg, sizeof(cfg));
    splinterdb_config_set_defaults(&cfg);
-   kvs->spl->flush = 0;
    io_config_init(&kvs->io_cfg,
                   cfg.page_size,
                   cfg.extent_size,
@@ -364,6 +363,7 @@ splinterdb_create_or_open(const splinterdb_config *kvs_cfg,      // IN
    }
 
    kvs->spl->cfg.memtable_capacity = kvs_cfg->memtable_capacity;
+   kvs->spl->flush = 0;
    *kvs_out = kvs;
    return platform_status_to_int(status);
 
