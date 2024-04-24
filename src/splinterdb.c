@@ -165,7 +165,7 @@ splinterdb_init_config(const splinterdb_config *kvs_cfg, // IN
    splinterdb_config cfg = {0};
    memcpy(&cfg, kvs_cfg, sizeof(cfg));
    splinterdb_config_set_defaults(&cfg);
-
+   kvs->spl->flush = 0;
    io_config_init(&kvs->io_cfg,
                   cfg.page_size,
                   cfg.extent_size,
@@ -179,7 +179,6 @@ splinterdb_init_config(const splinterdb_config *kvs_cfg, // IN
    if (!SUCCESS(rc)) {
       return rc;
    }
-
    allocator_config_init(&kvs->allocator_cfg, &kvs->io_cfg, cfg.disk_size);
 
    clockcache_config_init(&kvs->cache_cfg,
@@ -877,4 +876,9 @@ const memtable_context *
 splinterdb_get_memtable_context_handle(const splinterdb *kvs)
 {
    return kvs->spl->mt_ctxt;
+}
+
+void
+splinterdb_flush_count(splinterdb *kvs) {
+    printf("Flush count %u\n", kvs->spl->flush);
 }

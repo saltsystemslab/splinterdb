@@ -2092,6 +2092,7 @@ btree_lookup_node(cache             *cc,             // IN
          accumulate_node_ranks(cfg, node.hdr, 0, child_idx, stats);
       }
 
+      // TODO error here
       btree_node_get(cc, cfg, &child_node, type);
       debug_assert(child_node.page->disk_addr == child_node.addr);
       btree_node_unget(cc, cfg, &node);

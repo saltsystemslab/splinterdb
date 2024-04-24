@@ -6822,7 +6822,9 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result, slice nod
     key lower_bound = NEGATIVE_INFINITY_KEY;
     trunk_aux_pivot aux;
     uint16 hops = 1;
+
     uint16 height = trunk_node_height(&node);
+    printf("Height of root: %u\n", height);
     for (uint16 h = height; h > 0; h = h - hops) {
         uint16 pivot_no =
                 trunk_find_pivot(spl, &node, target, less_than_or_equal);

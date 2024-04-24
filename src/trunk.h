@@ -220,6 +220,7 @@ struct trunk_handle {
    srq srq;
 
    trunk_compacted_memtable compacted_memtable[/*cfg.mt_cfg.max_memtables*/];
+   uint16 flush;
 };
 
 typedef struct trunk_range_iterator {
