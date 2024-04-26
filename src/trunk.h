@@ -481,5 +481,5 @@ platform_status
 trunk_flush(trunk_handle     *spl,
             trunk_node       *parent,
             struct trunk_pivot_data *pdata,
-            bool32            is_space_rec
+            bool32            is_space_rec,
             uint64* new_addr);
