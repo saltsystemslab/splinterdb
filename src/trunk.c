@@ -884,7 +884,7 @@ static inline void trunk_dec_filter(trunk_handle *spl, routing_filter *filter);
 
 void trunk_compact_bundle(void *arg, void *scratch);
 
-platform_status trunk_flush(trunk_handle *spl, trunk_node *parent, trunk_pivot_data *pdata, bool32 is_space_rec);
+platform_status trunk_flush(trunk_handle *spl, trunk_node *parent, trunk_pivot_data *pdata, bool32 is_space_rec, uint64* new_addr);
 
 platform_status trunk_flush_fullest(trunk_handle *spl, trunk_node *node);
 
@@ -4523,7 +4523,8 @@ platform_status
 trunk_flush(trunk_handle *spl,
             trunk_node *parent,
             trunk_pivot_data *pdata,
-            bool32 is_space_rec) {
+            bool32 is_space_rec
+            uint64* new_addr) {
     platform_status rc;
 
     uint64 wait_start, flush_start;
@@ -4591,6 +4592,7 @@ trunk_flush(trunk_handle *spl,
             uint64 child_idx = trunk_pdata_to_pivot_index(spl, parent, pdata);
             trunk_split_index(spl, parent, &new_child, child_idx, req);
         }
+        *new_addr = new_child.addr;
     }
 
     debug_assert(trunk_verify_node(spl, &new_child));
@@ -4602,6 +4604,7 @@ trunk_flush(trunk_handle *spl,
         trunk_flush_fullest(spl, &new_child);
     }
 
+    *new_addr = new_child.addr;
     trunk_node_unlock(spl->cc, &new_child);
     trunk_node_unclaim(spl->cc, &new_child);
     trunk_node_unget(spl->cc, &new_child);
@@ -4652,7 +4655,11 @@ trunk_flush_fullest(trunk_handle *spl, trunk_node *node) {
         if (trunk_pivot_needs_flush(spl, node, pdata, spl->cfg.max_branches_per_node)) {
             //! Remove P*
             node->hdr->num_aux_pivots = 0;
-            rc = trunk_flush(spl, node, pdata, FALSE);
+
+            uint64 new_addr;
+
+            rc = trunk_flush(spl, node, pdata, FALSE, &new_addr);
+            platform_default_log("New node addr: %lu", new_addr);
             if (!SUCCESS(rc)) {
                 return rc;
             }
@@ -4680,7 +4687,10 @@ trunk_flush_fullest(trunk_handle *spl, trunk_node *node) {
         platform_assert(fullest_pivot_no != TRUNK_INVALID_PIVOT_NO);
         trunk_pivot_data *pdata =
                 trunk_get_pivot_data(spl, node, fullest_pivot_no);
-        return trunk_flush(spl, node, pdata, FALSE);
+
+        uint64 new_addr;
+        return trunk_flush(spl, node, pdata, FALSE, &new_addr);
+        platform_default_log("New node addr: %lu", new_addr);
     }
     return rc;
 }
@@ -6479,7 +6489,9 @@ trunk_reclaim_space(trunk_handle *spl) {
             if (spl->cfg.use_stats) {
                 sr_start = platform_get_timestamp();
             }
-            platform_status rc = trunk_flush(spl, &node, pdata, TRUE);
+            uint64 new_addr;
+            platform_status rc = trunk_flush(spl, &node, pdata, TRUE, &new_addr);
+            platform_default_log("New node addr: %lu", new_addr);
             if (spl->cfg.use_stats) {
                 const threadid tid = platform_get_tid();
                 uint16 height = trunk_node_height(&node);
@@ -6825,6 +6837,7 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result, slice nod
 
     uint16 height = trunk_node_height(&node);
     printf("Height of root: %u\n", height);
+    printf("Number of children of root node %u", trunk_num_children(spl, &node));
     for (uint16 h = height; h > 0; h = h - hops) {
         uint16 pivot_no =
                 trunk_find_pivot(spl, &node, target, less_than_or_equal);
@@ -6895,6 +6908,7 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result, slice nod
         //! Check if current 'node' is the root.
         //! Claim on root
         //! Check if messages are needed to be flushed.
+        uint64 new_addr = pdata->addr;
         if (trunk_pivot_needs_flush(spl, &node, pdata, 0)) {
             if (node.addr == spl->root_addr) {
                 //! Just lock the root node, no need to do anything else.
@@ -6908,7 +6922,8 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result, slice nod
                 trunk_node_lock(spl->cc, &node);
             }
             spl->flush++;
-            trunk_flush(spl, &node, pdata, FALSE);
+            // TODO node addr
+            trunk_flush(spl, &node, pdata, FALSE, &new_addr);
             if (node.addr == spl->root_addr) {
                 trunk_node_unclaim(spl->cc, &node);
                 trunk_node_unlock(spl->cc, &node);
@@ -6919,7 +6934,7 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result, slice nod
                 trunk_node_unget(spl->cc, &temp);
             }
         }
-        trunk_node_get(spl->cc, pdata->addr, &child);
+        trunk_node_get(spl->cc, new_addr, &child);
         if (pivot_no == node.hdr->num_pivot_keys - 1) {
             //! Means that this is the last pivot in this node. So upper bound
             //! will be the parent's upper bound.
@@ -6937,6 +6952,7 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result, slice nod
         }
         trunk_node_unget(spl->cc, &node);
         node = child;
+        printf("Number of children node %lu, %u", node.addr, trunk_num_children(spl, &node));
     }
 
     // look in leaf
