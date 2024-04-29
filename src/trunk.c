@@ -4570,8 +4570,24 @@ trunk_flush_one_level(trunk_handle *spl,
                                         req->input_pivot_kv_byte_count);
     trunk_bundle_inc_pivot_rc(spl, &new_child, bundle);
     debug_assert(allocator_page_valid(spl->al, req->addr));
-
+    if (spl->cfg.use_stats) {
+        flush_start = platform_timestamp_elapsed(flush_start);
+        if (parent->addr == spl->root_addr) {
+            spl->stats[tid].root_flush_time_ns += flush_start;
+            if (flush_start > spl->stats[tid].root_flush_time_max_ns) {
+                spl->stats[tid].root_flush_time_max_ns = flush_start;
+            }
+        } else {
+            const uint32 h = trunk_node_height(parent);
+            spl->stats[tid].flush_time_ns[h] += flush_start;
+            if (flush_start > spl->stats[tid].flush_time_max_ns[h]) {
+                spl->stats[tid].flush_time_max_ns[h] = flush_start;
+            }
+        }
+    }
+    platform_assert_status_ok(rc);
     return rc;
+
 }
 
 /*
