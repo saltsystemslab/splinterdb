@@ -4510,6 +4510,70 @@ trunk_compact_bundle_enqueue(trunk_handle *spl,
             spl->ts, TASK_TYPE_NORMAL, trunk_compact_bundle, req, FALSE);
 }
 
+
+platform_status
+trunk_flush_one_level(trunk_handle *spl,
+            trunk_node *parent,
+            trunk_pivot_data *pdata,
+            bool32 is_space_rec,
+            uint64* new_addr) {
+    platform_status rc;
+
+    uint64 wait_start, flush_start;
+    threadid tid;
+    if (spl->cfg.use_stats) {
+        tid = platform_get_tid();
+        wait_start = platform_get_timestamp();
+    }
+
+    trunk_node new_child;
+    trunk_copy_node_and_add_to_parent(spl, parent, pdata, &new_child);
+
+    platform_assert(trunk_room_to_flush(spl, parent, &new_child, pdata),
+                    "Flush failed: %lu %lu\n",
+                    parent->addr,
+                    new_child.addr);
+
+    if ((!is_space_rec && pdata->srq_idx != -1)
+        && spl->cfg.reclaim_threshold != UINT64_MAX) {
+        // platform_default_log("Deleting %12lu-%lu (index %lu) from SRQ\n",
+        //       parent->disk_addr, pdata->generation, pdata->srq_idx);
+        srq_delete(&spl->srq, pdata->srq_idx);
+        srq_print(&spl->srq);
+        pdata->srq_idx = -1;
+    }
+
+    if (spl->cfg.use_stats) {
+        if (parent->addr == spl->root_addr) {
+            spl->stats[tid].root_flush_wait_time_ns +=
+                    platform_timestamp_elapsed(wait_start);
+        } else {
+            spl->stats[tid].flush_wait_time_ns[trunk_node_height(parent)] +=
+                    platform_timestamp_elapsed(wait_start);
+        }
+        flush_start = platform_get_timestamp();
+    }
+
+    // flush the branch references into a new bundle in the child
+    trunk_compact_bundle_req *req = TYPED_ZALLOC(spl->heap_id, req);
+    trunk_bundle *bundle =
+            trunk_flush_into_bundle(spl, parent, &new_child, pdata, req);
+    trunk_tuples_in_bundle(spl,
+                           &new_child,
+                           bundle,
+                           req->input_pivot_tuple_count,
+                           req->input_pivot_kv_byte_count);
+    trunk_pivot_add_bundle_tuple_counts(spl,
+                                        &new_child,
+                                        bundle,
+                                        req->input_pivot_tuple_count,
+                                        req->input_pivot_kv_byte_count);
+    trunk_bundle_inc_pivot_rc(spl, &new_child, bundle);
+    debug_assert(allocator_page_valid(spl->al, req->addr));
+
+    return rc;
+}
+
 /*
  * flush flushes from parent to the child indicated by pdata.
  *
@@ -6922,8 +6986,7 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result, slice nod
                 trunk_node_lock(spl->cc, &node);
             }
             spl->flush++;
-            // TODO node addr
-            trunk_flush(spl, &node, pdata, FALSE, &new_addr);
+            trunk_flush_one_level(spl, &node, pdata, FALSE, &new_addr);
             if (node.addr == spl->root_addr) {
                 trunk_node_unclaim(spl->cc, &node);
                 trunk_node_unlock(spl->cc, &node);
@@ -7016,6 +7079,7 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result, slice nod
                     uint8 num_elements = (temp_root.hdr->num_aux_pivots + 1);
                     temp_root.hdr->aux_pivot[num_elements - 1] = aux;
                     temp_root.hdr->num_aux_pivots = num_elements;
+                    break;
                 }
             }
             //! If no space, go one level down.
