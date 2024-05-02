@@ -93,7 +93,7 @@ int test(splinterdb *spl_handle, FILE *script_input, uint64_t nops,
          uint64_t count_point4,
          uint64_t count_point5,
          uint64_t count_point6, int mode) {
-    //key_value_pair *kvp = (key_value_pair *) malloc(nops/2 * sizeof(key_value_pair));
+    key_value_pair *kvp = (key_value_pair *) malloc(nops/2 * sizeof(key_value_pair));
     slice key, value;;
 
     splinterdb_lookup_result result;
@@ -106,7 +106,7 @@ int test(splinterdb *spl_handle, FILE *script_input, uint64_t nops,
     uint64_t num_of_loads_array[100];
     uint64_t num_of_stores_array[100];
     uint64_t section_index = 0;
-    //uint64_t w = 0;
+    uint64_t w = 0;
     timer_start(&timer);
     splinterdb_flush_count(spl_handle);
     for (uint64_t i = 1; i <= nops; i++) {
@@ -129,8 +129,8 @@ int test(splinterdb *spl_handle, FILE *script_input, uint64_t nops,
                 key = slice_create((size_t) strlen(t), t);
                 value = slice_create((size_t) strlen(t), t);
                 splinterdb_insert(spl_handle, key, value);
-               // struct key_value_pair kv = {key, value};
-               // kvp[w++] = kv;
+                struct key_value_pair kv = {key, value};
+                kvp[w++] = kv;
                 break;
             case 1:  // update
                 key = slice_create((size_t) strlen(t), t);
@@ -153,7 +153,7 @@ int test(splinterdb *spl_handle, FILE *script_input, uint64_t nops,
                         //! compare value
                         char* value = (char *)slice_data(kvp[j].value);
                         char* usr_val = (char *)slice_data(lookup);
-                        if (strcmp(value, usr_val) == 0) {
+                        if (strncmp(value, usr_val, strlen(value)) == 0) {
                           break;
                         } else {
                             abort();

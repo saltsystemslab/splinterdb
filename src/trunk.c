@@ -6975,6 +6975,7 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result, slice nod
                 trunk_node_get(spl->cc, node.hdr->aux_pivot[idx].node_addr, &child);
                 trunk_node_unget(spl->cc, &node);
                 node = child;
+		result_found_at_node_addr = node.addr;
                 continue;
             }
         } else {
@@ -7018,13 +7019,11 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result, slice nod
         if (pivot_no == node.hdr->num_pivot_keys - 1) {
             //! Means that this is the last pivot in this node. So upper bound
             //! will be the parent's upper bound.
-            lower_bound = pivot_start_range;
-            upper_bound = NEGATIVE_INFINITY_KEY;
+            lower_bound =  pivot_start_range;
         } else if (pivot_no == 0) {
             //! Means that this is the first pivot in the node, so lower bound
             //! will be that of the parent.
-            upper_bound = pivot_start_range;
-            lower_bound = NEGATIVE_INFINITY_KEY;
+            upper_bound = ondisk_key_to_key(&trunk_get_pivot_data(spl, &node, pivot_no + 1)->pivot);
         } else {
             //! Pivot is somewhere in the middle, so get the lower and upper bound
             lower_bound = pivot_start_range;
