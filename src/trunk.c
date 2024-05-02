@@ -578,7 +578,7 @@ typedef struct ONDISK trunk_hdr {
     trunk_bundle bundle[TRUNK_MAX_BUNDLES];
     trunk_subbundle subbundle[TRUNK_MAX_SUBBUNDLES];
     routing_filter sb_filter[TRUNK_MAX_SUBBUNDLE_FILTERS];
-    trunk_aux_pivot aux_pivot[8];
+    trunk_aux_pivot aux_pivot[56];
     uint8 num_aux_pivots;
 } trunk_hdr;
 
@@ -4511,13 +4511,12 @@ trunk_compact_bundle_enqueue(trunk_handle *spl,
 }
 
 
-platform_status
+void
 trunk_flush_one_level(trunk_handle *spl,
             trunk_node *parent,
             trunk_pivot_data *pdata,
             bool32 is_space_rec,
             uint64* new_addr) {
-    platform_status rc;
 
     uint64 wait_start, flush_start;
     threadid tid;
@@ -4585,8 +4584,10 @@ trunk_flush_one_level(trunk_handle *spl,
             }
         }
     }
-    platform_assert_status_ok(rc);
-    return rc;
+    *new_addr = new_child.addr;
+        trunk_node_unlock(spl->cc, &new_child);
+	    trunk_node_unclaim(spl->cc, &new_child);
+	        trunk_node_unget(spl->cc, &new_child);
 
 }
 
@@ -6738,6 +6739,7 @@ trunk_filter_lookup(trunk_handle *spl,
             routing_filter_get_next_value(found_values, ROUTING_NOT_FOUND);
     while (next_value != ROUTING_NOT_FOUND) {
         uint16 branch_no = trunk_add_branch_number(spl, start_branch, next_value);
+
         trunk_branch *branch = trunk_get_branch(spl, node, branch_no);
         bool32 local_found;
         platform_status rc;
@@ -6916,8 +6918,6 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result, slice nod
     uint16 hops = 1;
 
     uint16 height = trunk_node_height(&node);
-    printf("Height of root: %u\n", height);
-    printf("Number of children of root node %u", trunk_num_children(spl, &node));
     for (uint16 h = height; h > 0; h = h - hops) {
         uint16 pivot_no =
                 trunk_find_pivot(spl, &node, target, less_than_or_equal);
@@ -6971,6 +6971,7 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result, slice nod
             }
             if (idx != -1) {
                 hops = node.hdr->aux_pivot[idx].num_hops;
+		printf("Using p* pointer\n");
                 trunk_node_get(spl->cc, node.hdr->aux_pivot[idx].node_addr, &child);
                 trunk_node_unget(spl->cc, &node);
                 node = child;
@@ -7013,7 +7014,7 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result, slice nod
                 trunk_node_unget(spl->cc, &temp);
             }
         }
-        trunk_node_get(spl->cc, new_addr, &child);
+        trunk_node_get(spl->cc, pdata->addr, &child);
         if (pivot_no == node.hdr->num_pivot_keys - 1) {
             //! Means that this is the last pivot in this node. So upper bound
             //! will be the parent's upper bound.
@@ -7031,7 +7032,6 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result, slice nod
         }
         trunk_node_unget(spl->cc, &node);
         node = child;
-        printf("Number of children node %lu, %u", node.addr, trunk_num_children(spl, &node));
     }
 
     // look in leaf
@@ -7078,10 +7078,14 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result, slice nod
 
                 break;
             } else {
+		    bool found = false;
                 for (int i = 0; i < temp_root.hdr->num_aux_pivots; i++) {
-                    if (temp_root.hdr->aux_pivot[i].node_addr == result_found_at_node_addr)
-                        continue;
+                    if (temp_root.hdr->aux_pivot[i].node_addr == result_found_at_node_addr) {
+			    found = true;
+                        break;
+		    }
                 }
+		if (!found) {
                 //! add P* pivot, check for space
                 //! Calculate space taken by fractional branches
                 uint64 bytes_used_by_level[TRUNK_MAX_HEIGHT] = {0};
@@ -7089,7 +7093,7 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result, slice nod
                 // todo check why memtable capacity is 0
                 if (bytes_used_by_level[h] >=
                     spl->cfg.max_branches_per_node * 4 * 1024 * 1024 &&
-                    temp_root.hdr->num_aux_pivots > 8) {
+                    temp_root.hdr->num_aux_pivots > 56) {
                     // dont do anything
                 } else {
                     uint8 num_elements = (temp_root.hdr->num_aux_pivots + 1);
@@ -7097,6 +7101,8 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result, slice nod
                     temp_root.hdr->num_aux_pivots = num_elements;
                     break;
                 }
+		}
+		
             }
             //! If no space, go one level down.
             trunk_node child;
@@ -9711,7 +9717,6 @@ trunk_config_init(trunk_config *trunk_cfg,
                          &trunk_cfg->btree_cfg,
                          TRUNK_NUM_MEMTABLES,
                          memtable_capacity);
-    trunk_cfg->memtable_capacity = memtable_capacity;
 
     // Has to be set after btree_config_init is called
     trunk_cfg->max_kv_bytes_per_node =

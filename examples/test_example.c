@@ -129,8 +129,8 @@ int test(splinterdb *spl_handle, FILE *script_input, uint64_t nops,
                 key = slice_create((size_t) strlen(t), t);
                 value = slice_create((size_t) strlen(t), t);
                 splinterdb_insert(spl_handle, key, value);
-                //struct key_value_pair kv = {key, value};
-                //kvp[w++] = kv;
+               // struct key_value_pair kv = {key, value};
+               // kvp[w++] = kv;
                 break;
             case 1:  // update
                 key = slice_create((size_t) strlen(t), t);
