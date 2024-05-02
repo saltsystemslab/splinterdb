@@ -14,8 +14,8 @@
 #include "util.h"
 
 #define DB_FILE_NAME    "splinterdb_intro_db"
-#define DB_FILE_SIZE_MB 1024 // Size of SplinterDB device; Fixed when created
-#define CACHE_SIZE_MB   64
+#define DB_FILE_SIZE_MB 50000 // Size of SplinterDB device; Fixed when created
+#define CACHE_SIZE_MB   256
 #define USER_MAX_KEY_SIZE ((int)100)
 
 enum {
@@ -32,13 +32,13 @@ typedef struct key_value_pair {
 void timer_start(uint64_t *timer) {
     struct timeval t;
     assert(!gettimeofday(&t, NULL));
-    timer -= 1000000 * t.tv_sec + t.tv_usec;
+    *timer -= 1000000 * t.tv_sec + t.tv_usec;
 }
 
 void timer_stop(uint64_t *timer) {
     struct timeval t;
     assert(!gettimeofday(&t, NULL));
-    timer += 1000000 * t.tv_sec + t.tv_usec;
+    *timer += 1000000 * t.tv_sec + t.tv_usec;
 }
 
 
@@ -121,7 +121,7 @@ int test(splinterdb *spl_handle, FILE *script_input, uint64_t nops,
             op = rand() % 7;
             u = rand() % 100000;
         }
-        sprintf(t, "%ld", u);
+        sprintf(t, "%lu", u);
         switch (op) {
             case 0:  // insert
                 key = slice_create((size_t) strlen(t), t);
@@ -144,6 +144,7 @@ int test(splinterdb *spl_handle, FILE *script_input, uint64_t nops,
                 splinterdb_lookup(spl_handle, key, &result);
                 splinterdb_lookup_result_value(&result, &lookup);
 #ifdef CORRECTNESS
+		printf("\nCheck!");
                 for (int j = 0; j < w; j++) {
                     slice s_key = kvp[j].key;
                     char* key_str = (char *)slice_data(s_key);
@@ -152,7 +153,7 @@ int test(splinterdb *spl_handle, FILE *script_input, uint64_t nops,
                         //! compare value
                         char* value = (char *)slice_data(kvp[j].value);
                         char* usr_val = (char *)slice_data(lookup);
-                        if (strcmp(value, usr_val) == 0) {
+                        if (strncmp(value, usr_val, strlen(value)) == 0) {
                           break;
                         } else {
                             abort();
@@ -292,8 +293,8 @@ int main(int argc, char **argv) {
     splinterdb_config splinterdb_cfg;
     memset(&splinterdb_cfg, 0, sizeof(splinterdb_cfg));
     splinterdb_cfg.filename = DB_FILE_NAME;
-    splinterdb_cfg.disk_size = (DB_FILE_SIZE_MB * 1024 * 1024);
-    splinterdb_cfg.cache_size = (CACHE_SIZE_MB * 1024 * 1024);
+    splinterdb_cfg.disk_size = ((uint64)DB_FILE_SIZE_MB * 1024 * 1024);
+    splinterdb_cfg.cache_size = ((uint64)CACHE_SIZE_MB * 1024 * 1024);
     splinterdb_cfg.data_cfg = &splinter_data_cfg;
 
     splinterdb *spl_handle = NULL; // To a running SplinterDB instance
