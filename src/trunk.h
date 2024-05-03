@@ -219,6 +219,7 @@ struct trunk_handle {
    srq srq;
 
     uint16 flush;
+    uint64 p_star;
     uint64 memtable_capacity;
    trunk_compacted_memtable compacted_memtable[/*cfg.mt_cfg.max_memtables*/];
 };

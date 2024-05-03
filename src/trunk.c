@@ -6976,6 +6976,7 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result, slice nod
                 trunk_node_unget(spl->cc, &node);
                 node = child;
 		result_found_at_node_addr = node.addr;
+		spl->p_star++;
                 continue;
             }
         } else {
