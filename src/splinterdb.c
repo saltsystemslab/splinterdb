@@ -362,8 +362,9 @@ splinterdb_create_or_open(const splinterdb_config *kvs_cfg,      // IN
       goto deinit_cache;
    }
 
-   kvs->spl->cfg.memtable_capacity = kvs_cfg->memtable_capacity;
+   kvs->spl->memtable_capacity = kvs_cfg->memtable_capacity;
    kvs->spl->flush = 0;
+   kvs->spl->p_star = 0;
    *kvs_out = kvs;
    return platform_status_to_int(status);
 
@@ -881,4 +882,5 @@ splinterdb_get_memtable_context_handle(const splinterdb *kvs)
 void
 splinterdb_flush_count(splinterdb *kvs) {
     printf("Flush count %u\n", kvs->spl->flush);
+    printf("P star usage %lu\n", kvs->spl->p_star);
 }

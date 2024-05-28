@@ -180,7 +180,7 @@ int test(splinterdb *spl_handle, FILE *script_input, uint64_t nops,
          uint64_t count_point4,
          uint64_t count_point5,
          uint64_t count_point6, int mode) {
-    //key_value_pair *kvp = (key_value_pair *) malloc(nops/2 * sizeof(key_value_pair));
+    key_value_pair *kvp = (key_value_pair *) malloc(nops/2 * sizeof(key_value_pair));
     slice key, value;;
 
     splinterdb_lookup_result result;
