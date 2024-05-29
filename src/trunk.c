@@ -6902,7 +6902,7 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result, slice nod
         }
     }
 
-    uint64 result_found_at_node_addr;
+    uint64_t result_found_at_node_addr = 0;
     trunk_node node;
     trunk_node temp;
     trunk_root_get(spl, &node);
@@ -7067,6 +7067,9 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result, slice nod
         //! Iterate through the query path array and check if we have a pointer to the
         //! node at which the result was found.
         for (uint16 h = height; h > 0; h--) {
+            if (result_found_at_node_addr == 0) {
+                break;
+            }
             uint16 pivot_no =
                     trunk_find_pivot(spl, &temp_root, target, less_than_or_equal);
             trunk_pivot_data *pivot = trunk_get_pivot_data(spl, &temp_root, pivot_no);
