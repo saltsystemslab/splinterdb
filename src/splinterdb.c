@@ -99,7 +99,7 @@ splinterdb_config_set_defaults(splinterdb_config *cfg)
    }
 
    if (!cfg->memtable_capacity) {
-      cfg->memtable_capacity = MiB_TO_B(4);
+      cfg->memtable_capacity = MiB_TO_B(24);
    }
    if (!cfg->fanout) {
       cfg->fanout = 8;
