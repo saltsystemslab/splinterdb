@@ -1800,6 +1800,7 @@ clockcache_init(clockcache        *cc,   // OUT
       clockcache_divide_by_page_size(cc, clockcache_extent_size(cc));
    cc->number_of_loads = 0;
    cc->number_of_stores = 0;
+   cc->p_star_usage = 0;
 
    platform_assert(cc->cfg->page_capacity % PLATFORM_CACHELINE_SIZE == 0);
    platform_assert(cc->cfg->capacity == debug_capacity);

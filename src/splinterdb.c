@@ -405,6 +405,10 @@ splinterdb_print_stats(splinterdb *kvs) {
     trunk_print_space_use(Platform_default_log_handle, kvs->spl);
 }
 
+uint64_t splinterdb_p_star_stats(splinterdb *kvs) {
+    return kvs->spl->p_star;
+}
+
 uint64_t 
 splinterdb_get_num_of_loads(splinterdb *kvs) {
    return kvs->cache_handle.number_of_loads;

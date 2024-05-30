@@ -141,6 +141,7 @@ struct clockcache {
    cache_stats stats[MAX_THREADS];
    uint64_t number_of_loads;
    uint64_t number_of_stores;
+   uint64_t p_star_usage;
 };
 
 

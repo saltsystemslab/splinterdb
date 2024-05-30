@@ -6975,7 +6975,7 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result, slice nod
                 trunk_node_unget(spl->cc, &node);
                 node = child;
 		result_found_at_node_addr = node.addr;
-		spl->p_star++;
+        spl->p_star++;
                 continue;
             }
         } else {
@@ -9232,6 +9232,7 @@ trunk_print_lookup_stats(platform_log_handle *log_handle, trunk_handle *spl) {
     platform_log(log_handle, "| lookups:           %lu\n", lookups);
     platform_log(log_handle, "| lookups found:     %lu\n", global->lookups_found);
     platform_log(log_handle, "| lookups not found: %lu\n", global->lookups_not_found);
+    platform_log(log_handle, "| p_star pointer usage: %lu\n", spl->p_star);
     platform_log(log_handle, "-----------------------------------------------------------------------------------\n");
     platform_log(log_handle, "\n");
 

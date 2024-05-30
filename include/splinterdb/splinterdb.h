@@ -13,6 +13,7 @@
 #ifndef _SPLINTERDB_H_
 #define _SPLINTERDB_H_
 
+#include <stdint.h>
 #include "splinterdb/data.h"
 
 // Get a version string for this build of SplinterDB
@@ -438,4 +439,5 @@ splinterdb_stats_reset(splinterdb *kvs);
 void
 splinterdb_flush_count(splinterdb *kvs);
 
+uint64_t splinterdb_p_star_stats(splinterdb *kvs);
 #endif // _SPLINTERDB_H_
