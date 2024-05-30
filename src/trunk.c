@@ -6881,7 +6881,6 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result, slice nod
 #ifdef ADAPTIVE_DEBUG
     trunk_node debug_node;
     trunk_root_get(spl, &debug_node);
-    platform_default_log("size of p* struct is: %lu", sizeof(debug_node.hdr->aux_pivot));
     trunk_node_unget(spl->cc, &debug_node);
 #endif
     merge_accumulator_set_to_null(result);
@@ -7059,8 +7058,6 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result, slice nod
         memtable_end_lookup(spl->mt_ctxt);
     } else {
         trunk_node_unget(spl->cc, &node);
-        platform_default_log("test %lu", aux.node_addr);
-        platform_default_log("found at %lu", result_found_at_node_addr);
 #ifdef TEST
         trunk_node temp_root;
         trunk_root_get(spl, &temp_root);

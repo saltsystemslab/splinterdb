@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include "splinterdb/default_data_config.h"
 #include "splinterdb/splinterdb.h"
+#include "splinterdb.c"
 #include <string.h>
 #include <time.h>
 #include <sys/time.h>
@@ -13,13 +14,15 @@
 #include <inttypes.h>
 #include <pthread.h>
 #include "util.h"
+#include "trunk.c"
+
 #include <sched.h>
 
 #define DB_FILE_NAME    "splinterdb_intro_db"
 #define DB_FILE_SIZE_MB 200000 // Size of SplinterDB device; Fixed when created
 #define CACHE_SIZE_MB   1024
 #define USER_MAX_KEY_SIZE ((int)100)
-#define SYSTEM_MAX_THREADS 32
+#define SYSTEM_MAX_THREADS 1
 #define MAX_LOAD_SIZE 4000000000
 
 enum {
@@ -41,7 +44,7 @@ typedef struct {
     uint64_t *op;
     uint64_t *load;
     uint64_t *run;
-    key_value_pair * kvp;
+    uint64_t threads;
 } ThreadArgs;
 
 
@@ -61,14 +64,13 @@ void timer_stop(uint64_t *timer) {
 int next_command(FILE *input, int *op, uint64_t *arg, int mode) {
     int ret;
     char command[64];
-    char *insert = mode == YCSB ? "I" : "Inserting";
-    char *read = mode == YCSB ? "R" : "Query";
-    char *update = mode == YCSB ? "U" : "Updating";
+    char *insert = mode == YCSB ? "i" : "Inserting";
+    char *read = mode == YCSB ? "r" : "Query";
+    char *update = mode == YCSB ? "u" : "Updating";
     ret = fscanf(input, "%s %ld", command, arg);
     if (ret == EOF)
         return EOF;
     else if (ret != 2) {
-        fprintf(stderr, "Parse error\n");
         exit(3);
     }
 
@@ -105,13 +107,15 @@ void* run_upserts(void * arg) {
 
     // Access the arguments
     splinterdb* spl_handle = thread_args->spl_handle;
+    splinterdb_register_thread(spl_handle);
     uint64_t count_point1 = thread_args->count_point1;
     uint64_t *ops = thread_args->op;
     uint64_t *load = thread_args->load;
+    uint64_t threads = thread_args->threads;
     //! Each thread will run this function. They will pass their portion of the
     //! input. We will stop the timer when number of operations is nops1/2/3.
     int thread_id = sched_getcpu();
-    int start_index = (count_point1 / 2) * (uint64_t) (thread_id % SYSTEM_MAX_THREADS);
+    int start_index = (count_point1 / threads) * (uint64_t) (thread_id % SYSTEM_MAX_THREADS);
     int end_index = start_index + (count_point1 / SYSTEM_MAX_THREADS);
     slice key, value;
     //int w = 0;
@@ -128,6 +132,7 @@ value = slice_create(sizeof(uint64_t), &load[i]);
             splinterdb_insert(spl_handle, key, value);
         }
     }
+    splinterdb_deregister_thread(spl_handle);
     return NULL;
 }
 
@@ -136,13 +141,15 @@ void* run_queries(void * arg) {
 
     // Access the arguments
     splinterdb* spl_handle = thread_args->spl_handle;
+    splinterdb_register_thread(spl_handle);
     uint64_t count_point2 = thread_args->count_point2;
     uint64_t *ops = thread_args->op;
     uint64_t *run = thread_args->run;
+    uint64_t threads = thread_args->threads;
     //! Each thread will run this function. They will pass their portion of the
     //! input. We will stop the timer when number of operations is nops1/2/3.
     int thread_id = sched_getcpu();
-    int start_index = (count_point2 / 2) * (uint64_t) (thread_id % SYSTEM_MAX_THREADS);
+    int start_index = (count_point2 / threads) * (uint64_t) (thread_id % SYSTEM_MAX_THREADS);
     int end_index = start_index + (count_point2 / SYSTEM_MAX_THREADS);
     slice key;
     //int w = 0;
@@ -150,13 +157,14 @@ void* run_queries(void * arg) {
     for (int i = start_index; i < end_index; i++) {
         if (ops[i] == 3) {
             splinterdb_lookup_result_init(spl_handle, &result, 0, NULL);
-            key = slice_create((size_t) strlen((const char *) run[i]), (const void *) run[i]);
+            key = slice_create(sizeof(uint64_t), &run[i]);
             slice lookup;
             printf("\nLookup %d\n", i);
             splinterdb_lookup(spl_handle, key, &result);
             splinterdb_lookup_result_value(&result, &lookup);
         }
     }
+    splinterdb_deregister_thread(spl_handle);
     return NULL;
 }
 
@@ -168,7 +176,7 @@ int test(splinterdb *spl_handle, FILE *script_input, uint64_t nops,
          uint64_t count_point3,
          uint64_t count_point4,
          uint64_t count_point5,
-         uint64_t count_point6, int mode) {
+         uint64_t count_point6, int mode, uint64_t num_threads) {
 
 
     uint64_t timer = 0;
@@ -216,7 +224,7 @@ int test(splinterdb *spl_handle, FILE *script_input, uint64_t nops,
     {
         pthread_t threads[32];
         timer_start(&timer);
-        for (int i = 0; i < 32; i++) {
+        for (int i = 0; i < num_threads; i++) {
             thread_args[i] = (ThreadArgs *) malloc(sizeof(ThreadArgs));
             thread_args[i]->spl_handle = spl_handle;
             thread_args[i]->nops = nops;
@@ -226,13 +234,14 @@ int test(splinterdb *spl_handle, FILE *script_input, uint64_t nops,
 	    thread_args[i]->op = opcodes;
 	    thread_args[i]->run = run;
 	    thread_args[i]->load = load;
+	    thread_args[i]->threads = num_threads;
             int c_result = pthread_create(&threads[i], NULL, run_upserts, (void *) thread_args[i]);
             if (c_result != 0) {
                 fprintf(stderr, "Error creating thread %d\n", i);
                 return 1;
             }
         }
-        for (int i = 0; i < 32; i++) {
+        for (int i = 0; i < num_threads; i++) {
             int c_result = pthread_join(threads[i], NULL);
 	    free(thread_args[i]);
             if (c_result != 0) {
@@ -241,26 +250,30 @@ int test(splinterdb *spl_handle, FILE *script_input, uint64_t nops,
             }
         }
         timer_stop(&timer);
+	trunk_node node;
+	trunk_root_get((trunk_handle * )splinterdb_get_trunk_handle(spl_handle), &node);
+	printf("Height of the tree: %d", trunk_node_height(&node));
         printf("Timer for first phase %lu", timer);
     }
 
     {
         pthread_t threads[32];
         timer_start(&timer);
-        for (int i = 0; i < 32; i++) {
+        for (int i = 0; i < num_threads; i++) {
             thread_args[i] = (ThreadArgs *) malloc(sizeof(ThreadArgs));
             thread_args[i]->spl_handle = spl_handle;
             thread_args[i]->nops = nops;
             thread_args[i]->num_sections = num_sections;
             thread_args[i]->count_point1 = count_point1;
             thread_args[i]->count_point2 = count_point2;
+	    thread_args[i]->threads = num_threads;
             int c_result = pthread_create(&threads[i], NULL, run_queries, (void *) thread_args);
             if (c_result != 0) {
                 fprintf(stderr, "Error creating thread %d\n", i);
                 return 1;
             }
         }
-        for (int i = 0; i < 32; i++) {
+        for (int i = 0; i < num_threads; i++) {
             int c_result = pthread_join(threads[i], NULL);
 	    free(thread_args[i]);
             if (c_result != 0) {
@@ -321,8 +334,9 @@ int main(int argc, char **argv) {
     uint64_t count_point4 = UINT64_MAX;
     uint64_t count_point5 = UINT64_MAX;
     uint64_t count_point6 = UINT64_MAX;
+    uint64_t threads = 1;
 
-    while ((opt = getopt(argc, argv, "m:i:n:t:u:v:w:x:y:z:")) != -1) {
+    while ((opt = getopt(argc, argv, "m:i:n:t:u:v:w:x:y:z:a:")) != -1) {
         switch (opt) {
             case 'm':
                 if (strtoull(optarg, &term, 10) == 0) {
@@ -361,7 +375,9 @@ int main(int argc, char **argv) {
                     nops = count_point6;
                 }
                 break;
-
+	    case 'a':
+		threads = strtoull(optarg, &term, 10);
+		break;
 
             default:
                 exit(1);
@@ -386,6 +402,8 @@ int main(int argc, char **argv) {
     splinterdb_cfg.disk_size = ((uint64) DB_FILE_SIZE_MB * 1024 * 1024);
     splinterdb_cfg.cache_size = ((uint64) CACHE_SIZE_MB * 1024 * 1024);
     splinterdb_cfg.data_cfg = &splinter_data_cfg;
+    splinterdb_cfg.num_memtable_bg_threads = 3;
+    splinterdb_cfg.num_normal_bg_threads = 48;
 
     splinterdb *spl_handle = NULL; // To a running SplinterDB instance
 
@@ -394,7 +412,7 @@ int main(int argc, char **argv) {
     uint64_t timer = 0;
     timer_start(&timer);
     test(spl_handle, script_input, nops, num_sections,
-         count_point1, count_point2, count_point3, count_point4, count_point5, count_point6, mode);
+         count_point1, count_point2, count_point3, count_point4, count_point5, count_point6, mode, threads);
     timer_stop(&timer);
     splinterdb_print_stats(spl_handle);
     splinterdb_close(&spl_handle);

@@ -26,10 +26,10 @@
 /* String parsing functions we don't want to use */
 
 #pragma GCC poison atoi
-#pragma GCC poison strtol
-#pragma GCC poison strtoll
-#pragma GCC poison strtoul
-#pragma GCC poison strtoull
+//#pragma GCC poison strtol
+//#pragma GCC poison strtoll
+//#pragma GCC poison strtoul
+//#pragma GCC poison strtoull
 
 /* =====================================
  * Everything below are things that have been platformized.
@@ -38,22 +38,22 @@
  * before including poison.h
  */
 #pragma GCC poison aligned_alloc
-#pragma GCC poison free
-#pragma GCC poison malloc
+//#pragma GCC poison free
+//#pragma GCC poison malloc
 #pragma GCC poison calloc
 #pragma GCC poison realloc
 
-#pragma GCC poison fclose
-#pragma GCC poison fopen
+//#pragma GCC poison fclose
+//#pragma GCC poison fopen
 
 #pragma GCC poison fflush
-#pragma GCC poison fprintf
+//#pragma GCC poison fprintf
 #pragma GCC poison fputs
 
 //#pragma GCC poison printf
 //#pragma GCC poison FILE
 
-#pragma GCC poison pthread_t
+//#pragma GCC poison pthread_t
 
 #pragma GCC poison strnlen
 
@@ -88,8 +88,8 @@
 #pragma GCC poison pthread_attr_init
 #pragma GCC poison pthread_attr_setdetachstate
 #pragma GCC poison pthread_attr_t
-#pragma GCC poison pthread_create
-#pragma GCC poison pthread_join
+//#pragma GCC poison pthread_create
+//#pragma GCC poison pthread_join
 #pragma GCC poison pthread_mutex_destroy
 #pragma GCC poison pthread_mutex_init
 #pragma GCC poison pthread_mutex_lock

@@ -359,7 +359,6 @@ bool32
 platform_batch_rwlock_try_claim(platform_batch_rwlock *lock, uint64 lock_idx)
 {
    threadid tid = platform_get_tid();
-    printf("Thread ID: %lu ", tid);
    debug_assert(lock->read_counter[tid][lock_idx]);
    if (__sync_lock_test_and_set(&lock->write_lock[lock_idx].claim, 1)) {
       return FALSE;
@@ -386,7 +385,6 @@ void
 platform_batch_rwlock_unclaim(platform_batch_rwlock *lock, uint64 lock_idx)
 {
    threadid tid = platform_get_tid();
-    printf("Thread ID: %lu ", tid);
    __sync_fetch_and_add(&lock->read_counter[tid][lock_idx], 1);
    __sync_lock_release(&lock->write_lock[lock_idx].claim);
 }
@@ -403,7 +401,6 @@ void
 platform_batch_rwlock_get(platform_batch_rwlock *lock, uint64 lock_idx)
 {
    threadid tid = platform_get_tid();
-   printf("Thread ID: %lu ", tid);
    while (1) {
       uint64 wait = 1;
       while (lock->write_lock[lock_idx].lock) {
@@ -426,7 +423,6 @@ void
 platform_batch_rwlock_unget(platform_batch_rwlock *lock, uint64 lock_idx)
 {
    threadid         tid = platform_get_tid();
-    printf("Thread ID: %lu ", tid);
    debug_only uint8 old_counter =
       __sync_fetch_and_sub(&lock->read_counter[tid][lock_idx], 1);
    debug_assert(old_counter == 1);
