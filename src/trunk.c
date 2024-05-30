@@ -7004,7 +7004,7 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result, slice nod
                 trunk_node_lock(spl->cc, &node);
             }
             spl->flush++;
-            trunk_flush_one_level(spl, &node, pdata, FALSE, &new_addr);
+            trunk_flush(spl, &node, pdata, FALSE, &new_addr);
             if (node.addr == spl->root_addr) {
                 trunk_node_unclaim(spl->cc, &node);
                 trunk_node_unlock(spl->cc, &node);

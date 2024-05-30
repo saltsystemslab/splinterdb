@@ -72,7 +72,7 @@ INCLUDE = -I $(INCDIR) -I $(SRCDIR) -I $(SRCDIR)/platform_$(PLATFORM) -I $(TESTS
 
 # use += here, so that extra flags can be provided via the environment
 
-CFLAGS += -D_GNU_SOURCE -ggdb -Wall -pthread -Wfatal-errors -Werror -Wvla -pg
+CFLAGS += -D_GNU_SOURCE -ggdb -Wall -pthread -Wfatal-errors -Werror -Wvla -Wno-error=unused-but-set-variable -Wno-error=unused-variable -pg
 CFLAGS += -DXXH_STATIC_LINKING_ONLY -fPIC -pg
 CFLAGS += -DSPLINTERDB_PLATFORM_DIR=$(PLATFORM_DIR) -pg -DADAPTIVE_DEBUG -DTEST
 
