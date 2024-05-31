@@ -402,8 +402,8 @@ int main(int argc, char **argv) {
     splinterdb_cfg.disk_size = ((uint64) DB_FILE_SIZE_MB * 1024 * 1024);
     splinterdb_cfg.cache_size = ((uint64) CACHE_SIZE_MB * 1024 * 1024);
     splinterdb_cfg.data_cfg = &splinter_data_cfg;
-    splinterdb_cfg.num_memtable_bg_threads = 3;
-    splinterdb_cfg.num_normal_bg_threads = 48;
+    splinterdb_cfg.num_memtable_bg_threads = 1;
+    splinterdb_cfg.num_normal_bg_threads = 4;
 
     splinterdb *spl_handle = NULL; // To a running SplinterDB instance
 
