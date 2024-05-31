@@ -337,49 +337,27 @@ ycsb_thread(void *arg)
       ycsb_op *ops = &params->ycsb_ops[my_batch];
       for (i = 0; i < batch_size; i++) {
          ops->start_time = platform_get_timestamp();
-         switch (ops->cmd) {
-            case 'r':
-            {
-               rc = trunk_lookup(
-                  spl, key_create(YCSB_KEY_SIZE, ops->key), &value);
-               platform_assert_status_ok(rc);
-               // if (!ops->found) {
-               //   char key_str[128];
-               //   trunk_key_to_string(spl, ops->key, key_str);
-               //   platform_default_log("Key %s not found\n", key_str);
-               //   trunk_print_lookup(spl, ops->key);
-               //   platform_assert(0);
-               //}
-               break;
-            }
-            case 'd':
-            case 'i':
-            case 'u':
-            {
-               message val =
-                  message_create(MESSAGE_TYPE_INSERT,
-                                 slice_create(YCSB_DATA_SIZE, ops->value));
-               rc = trunk_insert(spl, key_create(YCSB_KEY_SIZE, ops->key), val);
-               platform_assert_status_ok(rc);
-               break;
-            }
-            case 's':
-            {
-               rc = trunk_range(spl,
-                                key_create(YCSB_KEY_SIZE, ops->key),
-                                ops->range_len,
-                                nop_tuple_func,
-                                NULL);
-               platform_assert_status_ok(rc);
-               break;
-            }
-            default:
-            {
-               platform_error_log("Unknown YCSB command %c, skipping command\n",
-                                  ops->cmd);
-               break;
-            }
-         }
+          if (strcmp(ops->cmd, "Query") == 0) {
+              rc = trunk_lookup(spl, key_create(YCSB_KEY_SIZE, ops->key), &value);
+              platform_assert_status_ok(rc);
+              // if (!ops->found) {
+              //   char key_str[128];
+              //   trunk_key_to_string(spl, ops->key, key_str);
+              //   platform_default_log("Key %s not found\n", key_str);
+              //   trunk_print_lookup(spl, ops->key);
+              //   platform_assert(0);
+              // }
+          } else if (strcmp(ops->cmd, "d") == 0 || strcmp(ops->cmd, "i") == 0 || strcmp(ops->cmd, "u") == 0) {
+              message val = message_create(MESSAGE_TYPE_INSERT, slice_create(YCSB_DATA_SIZE, ops->value));
+              rc = trunk_insert(spl, key_create(YCSB_KEY_SIZE, ops->key), val);
+              platform_assert_status_ok(rc);
+          } else if (strcmp(ops->cmd, "s") == 0) {
+              rc = trunk_range(spl, key_create(YCSB_KEY_SIZE, ops->key), ops->range_len, nop_tuple_func, NULL);
+              platform_assert_status_ok(rc);
+          } else {
+              platform_error_log("Unknown YCSB command %s, skipping command\n", ops->cmd);
+          }
+
          ops->end_time = platform_get_timestamp();
          ops++;
       }
