@@ -649,7 +649,7 @@ load_ycsb_logs(int          argc,
 {
    uint64 _nphases            = 1;
    uint64 num_threads         = 0;
-   bool32 mlock_log           = TRUE;
+   bool32 mlock_log           = FALSE;
    char  *measurement_command = NULL;
    uint64 log_size_bytes      = 0;
    *use_existing              = FALSE;
@@ -1232,7 +1232,7 @@ ycsb_test(int argc, char *argv[])
    platform_default_log("overhead %lu MiB buffer %lu MiB\n",
                         B_TO_MiB(overhead_bytes),
                         B_TO_MiB(buffer_bytes));
-   cache_cfg.capacity      = memory_bytes - buffer_bytes;
+   cache_cfg.capacity      = 1073741824;
    cache_cfg.page_capacity = cache_cfg.capacity / cache_cfg.io_cfg->page_size;
 
    uint64 al_size = allocator_cfg.extent_capacity * sizeof(uint8);

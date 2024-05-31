@@ -99,13 +99,13 @@ splinterdb_config_set_defaults(splinterdb_config *cfg)
    }
 
    if (!cfg->memtable_capacity) {
-      cfg->memtable_capacity = MiB_TO_B(4);
+      cfg->memtable_capacity = MiB_TO_B(24);
    }
    if (!cfg->fanout) {
       cfg->fanout = 8;
    }
    if (!cfg->max_branches_per_node) {
-      cfg->max_branches_per_node = 48;
+      cfg->max_branches_per_node = 24;
    }
    if (!cfg->reclaim_threshold) {
       cfg->reclaim_threshold = UINT64_MAX;

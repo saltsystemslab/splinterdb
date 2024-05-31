@@ -45,9 +45,9 @@ void timer_stop(uint64_t *timer) {
 int next_command(FILE *input, int *op, uint64_t *arg, int mode) {
     int ret;
     char command[64];
-    char *insert = mode == YCSB ? "I" : "Inserting";
-    char *read = mode == YCSB ? "R" : "Query";
-    char *update = mode == YCSB ? "U" : "Updating";
+    char *insert = mode == YCSB ? "i" : "Inserting";
+    char *read = mode == YCSB ? "r" : "Query";
+    char *update = mode == YCSB ? "u" : "Updating";
     ret = fscanf(input, "%s %ld", command, arg);
     if (ret == EOF)
         return EOF;
@@ -96,6 +96,7 @@ int test(splinterdb *spl_handle, FILE *script_input, uint64_t nops,
     key_value_pair *kvp = (key_value_pair *) malloc(nops/2 * sizeof(key_value_pair));
     slice key, value;;
 
+                splinterdb_lookup_result result;
     uint64_t timer = 0;
     uint64_t count_points_array[] = {count_point1, count_point2,
                                      count_point3, count_point4,
@@ -136,7 +137,6 @@ int test(splinterdb *spl_handle, FILE *script_input, uint64_t nops,
                 splinterdb_insert(spl_handle, key, value);
                 break;
             case 3:  // query
-                splinterdb_lookup_result result;
                 splinterdb_lookup_result_init(spl_handle, &result, 0, NULL);
                 key = slice_create((size_t) strlen(t), t);
                 slice lookup;
@@ -296,6 +296,8 @@ int main(int argc, char **argv) {
     splinterdb_cfg.disk_size = ((uint64)DB_FILE_SIZE_MB * 1024 * 1024);
     splinterdb_cfg.cache_size = ((uint64)CACHE_SIZE_MB * 1024 * 1024);
     splinterdb_cfg.data_cfg = &splinter_data_cfg;
+    splinterdb_cfg.num_memtable_bg_threads = 1;
+    splinterdb_cfg.num_normal_bg_threads = 2;
 
     splinterdb *spl_handle = NULL; // To a running SplinterDB instance
 

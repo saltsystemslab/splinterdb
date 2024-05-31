@@ -3,5 +3,5 @@ export COMPILER=gcc
 export CC=$COMPILER
 export LD=$COMPILER
 make clean
-#make BUILD_MODE=debug
-make
+make BUILD_MODE=debug
+#make
