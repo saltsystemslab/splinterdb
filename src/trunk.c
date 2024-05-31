@@ -854,6 +854,8 @@ static inline bool32 trunk_branch_is_whole(trunk_handle *spl, trunk_node *node, 
 
 trunk_bundle *trunk_flush_into_bundle(trunk_handle *spl, trunk_node *parent, trunk_node *child, trunk_pivot_data *pdata,
                                       trunk_compact_bundle_req *req);
+trunk_bundle * trunk_flush_into_bundle_new(trunk_handle *spl, trunk_node *parent, trunk_node *child, trunk_pivot_data *pdata,
+                                           trunk_compact_bundle_req *req);
 
 void trunk_replace_bundle_branches(trunk_handle *spl, trunk_node *node, trunk_branch *new_branch,
                                    trunk_compact_bundle_req *req);
@@ -4463,6 +4465,131 @@ trunk_flush_into_bundle(trunk_handle *spl,    // IN
     return bundle;
 }
 
+trunk_bundle *
+trunk_flush_into_bundle_new(trunk_handle *spl,    // IN
+                        trunk_node *parent, // IN (modified)
+                        trunk_node *child,  // IN (modified)
+                        trunk_pivot_data *pdata,  // IN
+                        trunk_compact_bundle_req *req)    // IN/OUT
+{
+    platform_stream_handle stream;
+    platform_status rc = trunk_open_log_stream_if_enabled(spl, &stream);
+    platform_assert_status_ok(rc);
+    trunk_log_stream_if_enabled(
+            spl, &stream, "flush from %lu to %lu\n", parent->addr, child->addr);
+    trunk_log_node_if_enabled(&stream, spl, parent);
+    trunk_log_node_if_enabled(&stream, spl, child);
+    trunk_log_stream_if_enabled(
+            spl, &stream, "----------------------------------------\n");
+
+    req->spl = spl;
+    req->addr = child->addr;
+    req->height = trunk_node_height(child);
+    debug_assert(req->addr != 0);
+    req->bundle_no = trunk_get_new_bundle(spl, child);
+    req->max_pivot_generation = trunk_pivot_generation(spl, child);
+
+    key_buffer_init_from_key(
+            &req->start_key, spl->heap_id, trunk_min_key(spl, child));
+    key_buffer_init_from_key(
+            &req->end_key, spl->heap_id, trunk_max_key(spl, child));
+
+    trunk_bundle *bundle = trunk_get_bundle(spl, child, req->bundle_no);
+
+    // if there are whole branches, flush them into a subbundle
+    if (trunk_branch_is_whole(spl, parent, pdata->start_branch)) {
+        trunk_subbundle *child_sb = trunk_get_new_subbundle(spl, child, 1);
+        bundle->start_subbundle = trunk_subbundle_no(spl, child, child_sb);
+        child_sb->state = SB_STATE_UNCOMPACTED_INDEX;
+
+        // create a subbundle from the whole branches of the parent
+        child_sb->start_branch = trunk_end_branch(spl, child);
+        trunk_log_stream_if_enabled(
+                spl, &stream, "subbundle %hu\n", bundle->start_subbundle);
+        for (uint16 branch_no = pdata->start_branch;
+             trunk_branch_is_whole(spl, parent, branch_no);
+             branch_no = trunk_add_branch_number(spl, branch_no, 1)) {
+            trunk_branch *parent_branch = trunk_get_branch(spl, parent, branch_no);
+            trunk_log_stream_if_enabled(
+                    spl, &stream, "%lu\n", parent_branch->root_addr);
+            trunk_branch *new_branch = trunk_get_new_branch(spl, child);
+            *new_branch = *parent_branch;
+        }
+        child_sb->end_branch = trunk_end_branch(spl, child);
+        routing_filter *child_filter =
+                trunk_subbundle_filter(spl, child, child_sb, 0);
+        *child_filter = pdata->filter;
+        ZERO_STRUCT(pdata->filter);
+        debug_assert(trunk_subbundle_branch_count(spl, child, child_sb) != 0);
+    } else {
+        bundle->start_subbundle = trunk_end_subbundle(spl, child);
+    }
+
+    // for each subbundle in the parent, create a subbundle in the child
+    if (trunk_pivot_bundle_count(spl, parent, pdata) != 0) {
+        uint16 pivot_start_sb_no =
+                trunk_pivot_start_subbundle(spl, parent, pdata);
+
+        for (uint16 parent_sb_no = pivot_start_sb_no;
+             parent_sb_no != trunk_end_subbundle(spl, parent);
+             parent_sb_no = trunk_add_subbundle_number(spl, parent_sb_no, 1)) {
+            trunk_subbundle *parent_sb =
+                    trunk_get_subbundle(spl, parent, parent_sb_no);
+            uint16 filter_count =
+                    trunk_subbundle_filter_count(spl, parent, parent_sb);
+            trunk_subbundle *child_sb =
+                    trunk_get_new_subbundle(spl, child, filter_count);
+            child_sb->state = parent_sb->state;
+            child_sb->start_branch = trunk_end_branch(spl, child);
+            trunk_log_stream_if_enabled(spl,
+                                        &stream,
+                                        "subbundle %hu from subbundle %hu\n",
+                                        trunk_subbundle_no(spl, child, child_sb),
+                                        parent_sb_no);
+
+            for (uint16 branch_no = parent_sb->start_branch;
+                 branch_no != parent_sb->end_branch;
+                 branch_no = trunk_add_branch_number(spl, branch_no, 1)) {
+                trunk_branch *parent_branch =
+                        trunk_get_branch(spl, parent, branch_no);
+                trunk_log_stream_if_enabled(
+                        spl, &stream, "%lu\n", parent_branch->root_addr);
+                trunk_branch *new_branch = trunk_get_new_branch(spl, child);
+                *new_branch = *parent_branch;
+            }
+
+            child_sb->end_branch = trunk_end_branch(spl, child);
+
+            for (uint16 i = 0; i < filter_count; i++) {
+                routing_filter *child_filter =
+                        trunk_subbundle_filter(spl, child, child_sb, i);
+                routing_filter *parent_filter =
+                        trunk_subbundle_filter(spl, parent, parent_sb, i);
+                *child_filter = *parent_filter;
+                trunk_inc_filter(spl, child_filter);
+            }
+            debug_assert(trunk_subbundle_branch_count(spl, child, child_sb) != 0);
+        }
+    }
+    bundle->end_subbundle = trunk_end_subbundle(spl, child);
+
+    // clear the branches in the parent's pivot
+    trunk_pivot_clear(spl, parent, pdata);
+
+    trunk_log_stream_if_enabled(
+            spl, &stream, "----------------------------------------\n");
+    trunk_log_node_if_enabled(&stream, spl, parent);
+    trunk_log_node_if_enabled(&stream, spl, child);
+    trunk_log_stream_if_enabled(spl, &stream, "flush done\n");
+    trunk_log_stream_if_enabled(spl, &stream, "\n");
+    trunk_close_log_stream_if_enabled(spl, &stream);
+
+    platform_assert(bundle->start_subbundle != bundle->end_subbundle,
+                    "Flush into empty bundle.\n");
+
+    return bundle;
+}
+
 /*
  * room_to_flush checks that there is enough physical space in child to flush
  * from parent.
@@ -4555,12 +4682,8 @@ trunk_flush_one_level(trunk_handle *spl,
 
     // flush the branch references into a new bundle in the child
     trunk_compact_bundle_req *req = TYPED_ZALLOC(spl->heap_id, req);
-    trunk_node_claim(spl->cc, &new_child);
-    trunk_node_lock(spl->cc, &new_child);
     trunk_bundle *bundle =
             trunk_flush_into_bundle(spl, parent, &new_child, pdata, req);
-    trunk_node_unclaim(spl->cc, &new_child);
-    trunk_node_unlock(spl->cc, &new_child);
     trunk_tuples_in_bundle(spl,
                            &new_child,
                            bundle,
