@@ -242,7 +242,7 @@ write_latency_cdf(char *filename, latency_table table)
 }
 
 typedef struct ycsb_op {
-   char   cmd;
+   char   cmd[12];
    char   key[YCSB_KEY_SIZE];
    char   value[YCSB_DATA_SIZE];
    uint64 range_len;
@@ -581,22 +581,22 @@ parse_ycsb_log_file(void *arg)
       platform_assert(ret > 0);
       data_handle *dh = (data_handle *)&result[i].value;
       dh->ref_count   = 1;
-      ret = sscanf(buffer, "%c %64s", &result[i].cmd, result[i].key);
+      ret = sscanf(buffer, "%15s %64s", &result[i].cmd, result[i].key);
 
       platform_assert(ret == 2);
-      if (result[i].cmd == 'r') {
+      if (strcmp(result[i].cmd, "Query") == 0) {
          platform_assert(ret == 2);
       } else if (result[i].cmd == 'd') {
          platform_assert(ret == 2);
-      } else if (result[i].cmd == 'u') {
+      } else if (strcmp(result[i].cmd, "Updating") == 0) {
          platform_assert(ret == 2);
          random_bytes(&rs, (char *)dh->data, YCSB_DATA_SIZE - 2);
-      } else if (result[i].cmd == 'i') {
+      } else if (strcmp(result[i].cmd, "Inserting") == 0) {
          platform_assert(ret == 2);
          random_bytes(&rs, (char *)dh->data, YCSB_DATA_SIZE - 2);
       } else if (result[i].cmd == 's') {
          ret = sscanf(buffer,
-                      "%c %64s %lu\n",
+                      "%15s %64s %lu\n",
                       &result[i].cmd,
                       result[i].key,
                       &result[i].range_len);
