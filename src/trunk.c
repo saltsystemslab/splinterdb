@@ -4555,8 +4555,12 @@ trunk_flush_one_level(trunk_handle *spl,
 
     // flush the branch references into a new bundle in the child
     trunk_compact_bundle_req *req = TYPED_ZALLOC(spl->heap_id, req);
+    trunk_node_claim(spl->cc, &new_child);
+    trunk_node_lock(spl->cc, &new_child);
     trunk_bundle *bundle =
             trunk_flush_into_bundle(spl, parent, &new_child, pdata, req);
+    trunk_node_unclaim(spl->cc, &new_child);
+    trunk_node_unlock(spl->cc, &new_child);
     trunk_tuples_in_bundle(spl,
                            &new_child,
                            bundle,
