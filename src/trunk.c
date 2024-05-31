@@ -577,6 +577,17 @@ typedef struct ONDISK trunk_hdr {
 
     trunk_bundle bundle[TRUNK_MAX_BUNDLES];
     trunk_subbundle subbundle[TRUNK_MAX_SUBBUNDLES];
+    //! Where is this stored
+    //! TODO size of filter
+    // 672 bytes for sb filter. Each sb filter has an address which can fetch a routing_hdr
+    // routing_hdr is of size 192 bytes.
+    //! TODO Why are things evicted out of the cache
+    // Need to check
+    //!TODO below 24 branches
+    //! Node is designed to have some empty space for varying key sizes. By restricting key size to 24
+    // we can have 17 P* pivots in one node.
+    // will check in original code
+    //! TODO insert, query, range query performance
     routing_filter sb_filter[TRUNK_MAX_SUBBUNDLE_FILTERS];
     trunk_aux_pivot aux_pivot[56];
     uint8 num_aux_pivots;
@@ -9794,6 +9805,12 @@ trunk_config_init(trunk_config *trunk_cfg,
     trunk_cfg->max_pivot_keys = trunk_cfg->fanout + TRUNK_EXTRA_PIVOT_KEYS;
     // TODO size
     uint64 header_bytes = sizeof(trunk_hdr);
+    trunk_hdr temp;
+    printf("Size of individual components of header -------------- \n");
+    printf("Size of P* pivot = %lu\n", sizeof(temp.aux_pivot));
+    printf("Size of bundles = %lu\n", sizeof (temp.bundle));
+    printf("Size of subbundle = %lu\n", sizeof(temp.subbundle));
+    printf("Size of filter = %lu\n", sizeof(temp.sb_filter));
 
     uint64 pivot_bytes = (trunk_cfg->max_pivot_keys
                           * (data_cfg->max_key_size + sizeof(trunk_pivot_data)));
