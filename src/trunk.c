@@ -4743,6 +4743,13 @@ trunk_flush(trunk_handle *spl,
     }
 
     trunk_node new_child;
+    trunk_node old_child;
+    trunk_node_get(spl->cc, pdata->addr, &old_child);
+    uint16 num_children = trunk_num_children(spl, old_child);
+    for (uint16 pivot_no = 0; pivot_no < num_children; pivot_no++) {
+        trunk_pivot_data *pdata = trunk_get_pivot_data(spl, old_child, pivot_no);
+        //req->pivot_generation[pivot_no] = pdata->generation;
+    }
     trunk_copy_node_and_add_to_parent(spl, parent, pdata, &new_child);
 
     platform_assert(trunk_room_to_flush(spl, parent, &new_child, pdata),
@@ -7131,7 +7138,7 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result, slice nod
                 trunk_node_lock(spl->cc, &node);
             }
             spl->flush++;
-            trunk_flush_one_level(spl, &node, pdata, FALSE, &new_addr);
+            trunk_flush(spl, &node, pdata, FALSE, &new_addr);
             if (node.addr == spl->root_addr) {
                 trunk_node_unclaim(spl->cc, &node);
                 trunk_node_unlock(spl->cc, &node);
