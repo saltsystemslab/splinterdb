@@ -798,33 +798,24 @@ compute_log_latency_tables(ycsb_log_params *params)
 
    uint64 i = 0;
    for (i = 0; i < params->total_ops; i++) {
-      switch (ops->cmd) {
-         case 'r':
-            if (ops->found) {
-               record_latency(params->tables.pos_queries,
-                              ops->end_time - ops->start_time);
-            } else {
-               record_latency(params->tables.neg_queries,
-                              ops->end_time - ops->start_time);
-            }
-            break;
-         case 'd':
-            record_latency(params->tables.deletes,
-                           ops->end_time - ops->start_time);
-            break;
-         case 'i':
-            record_latency(params->tables.inserts,
-                           ops->end_time - ops->start_time);
-            break;
-         case 'u':
-            record_latency(params->tables.updates,
-                           ops->end_time - ops->start_time);
-            break;
-         case 's':
-            record_latency(params->tables.scans,
-                           ops->end_time - ops->start_time);
-            break;
-      }
+       if (strcmp(ops->cmd, "Query") == 0) {
+           if (ops->found) {
+               record_latency(params->tables.pos_queries, ops->end_time - ops->start_time);
+           } else {
+               record_latency(params->tables.neg_queries, ops->end_time - ops->start_time);
+           }
+       } else if (strcmp(ops->cmd, "d") == 0) {
+           record_latency(params->tables.deletes, ops->end_time - ops->start_time);
+       } else if (strcmp(ops->cmd, "Inserting") == 0) {
+           record_latency(params->tables.inserts, ops->end_time - ops->start_time);
+       } else if (strcmp(ops->cmd, "Updating") == 0) {
+           record_latency(params->tables.updates, ops->end_time - ops->start_time);
+       } else if (strcmp(ops->cmd, "s") == 0) {
+           record_latency(params->tables.scans, ops->end_time - ops->start_time);
+       } else {
+           // Handle unknown command
+           platform_assert(0);
+       }
       ops++;
    }
    sum_latency_tables(params->tables.all_queries,
