@@ -4743,13 +4743,6 @@ trunk_flush(trunk_handle *spl,
     }
 
     trunk_node new_child;
-    trunk_node old_child;
-    trunk_node_get(spl->cc, pdata->addr, &old_child);
-    uint16 num_children = trunk_num_children(spl, old_child);
-    for (uint16 pivot_no = 0; pivot_no < num_children; pivot_no++) {
-        trunk_pivot_data *pdata = trunk_get_pivot_data(spl, old_child, pivot_no);
-        //req->pivot_generation[pivot_no] = pdata->generation;
-    }
     trunk_copy_node_and_add_to_parent(spl, parent, pdata, &new_child);
 
     platform_assert(trunk_room_to_flush(spl, parent, &new_child, pdata),
@@ -9794,6 +9787,12 @@ trunk_config_init(trunk_config *trunk_cfg,
     trunk_cfg->max_pivot_keys = trunk_cfg->fanout + TRUNK_EXTRA_PIVOT_KEYS;
     // TODO size
     uint64 header_bytes = sizeof(trunk_hdr);
+        trunk_hdr temp;
+	    printf("Size of individual components of header -------------- \n");
+	        printf("Size of P* pivot = %lu\n", sizeof(temp.aux_pivot));
+		    printf("Size of bundles = %lu\n", sizeof (temp.bundle));
+		        printf("Size of subbundle = %lu\n", sizeof(temp.subbundle));
+			    printf("Size of filter = %lu\n", sizeof(temp.sb_filter));
 
     uint64 pivot_bytes = (trunk_cfg->max_pivot_keys
                           * (data_cfg->max_key_size + sizeof(trunk_pivot_data)));
