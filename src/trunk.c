@@ -577,17 +577,6 @@ typedef struct ONDISK trunk_hdr {
 
     trunk_bundle bundle[TRUNK_MAX_BUNDLES];
     trunk_subbundle subbundle[TRUNK_MAX_SUBBUNDLES];
-    //! Where is this stored
-    //! TODO size of filter
-    // 672 bytes for sb filter. Each sb filter has an address which can fetch a routing_hdr
-    // routing_hdr is of size 192 bytes.
-    //! TODO Why are things evicted out of the cache
-    // Need to check
-    //!TODO below 24 branches
-    //! Node is designed to have some empty space for varying key sizes. By restricting key size to 24
-    // we can have 17 P* pivots in one node.
-    // will check in original code
-    //! TODO insert, query, range query performance
     routing_filter sb_filter[TRUNK_MAX_SUBBUNDLE_FILTERS];
     trunk_aux_pivot aux_pivot[56];
     uint8 num_aux_pivots;
@@ -3756,12 +3745,6 @@ void
 trunk_memtable_flush_virtual(void *arg, uint64 generation) {
     trunk_handle *spl = arg;
     trunk_memtable_flush(spl, generation);
-}
-
-void
-trunk_flush_async_internal(void * arg) {
-    trunk_flush_req * req = arg;
-    trunk_flush(req->spl, req->parent, req->child, req->is_space_rec, req->new_addr);
 }
 
 static inline uint64
@@ -7059,7 +7042,7 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result, slice nod
     key lower_bound = NEGATIVE_INFINITY_KEY;
     trunk_aux_pivot aux;
     uint16 hops = 1;
-    bool32 is_query_path_free = TRUE;
+
     uint16 height = trunk_node_height(&node);
     for (uint16 h = height; h > 0; h = h - hops) {
         uint16 pivot_no =
@@ -7147,23 +7130,8 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result, slice nod
                 trunk_node_claim(spl->cc, &node);
                 trunk_node_lock(spl->cc, &node);
             }
-            //spl->flush++;
-            is_query_path_free = FALSE;
-            /**
-             *     task_enqueue(spl->ts,
-                 TASK_TYPE_MEMTABLE,
-                 trunk_memtable_flush_internal_virtual,
-                 &cmt->mt_args,
-                 FALSE);
-             */
-            trunk_flush_req * req = TYPED_ZALLOC(spl->heap_id, req);
-            req->spl = spl;
-            req->parent = &node;
-            req->child = pdata;
-            req->is_space_rec = FALSE;
-            req->new_addr = &new_addr;
-            task_enqueue(spl->ts, TASK_TYPE_NORMAL, trunk_flush_async_internal, &req, FALSE);
-            //trunk_flush(spl, &node, pdata, FALSE, &new_addr);
+            spl->flush++;
+            trunk_flush(spl, &node, pdata, FALSE, &new_addr);
             if (node.addr == spl->root_addr) {
                 trunk_node_unclaim(spl->cc, &node);
                 trunk_node_unlock(spl->cc, &node);
@@ -7223,7 +7191,7 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result, slice nod
         //! Iterate through the query path array and check if we have a pointer to the
         //! node at which the result was found.
         for (uint16 h = height; h > 0; h--) {
-            if (result_found_at_node_addr == 0 || !is_query_path_free) {
+            if (result_found_at_node_addr == 0) {
                 break;
             }
             uint16 pivot_no =
@@ -9819,6 +9787,12 @@ trunk_config_init(trunk_config *trunk_cfg,
     trunk_cfg->max_pivot_keys = trunk_cfg->fanout + TRUNK_EXTRA_PIVOT_KEYS;
     // TODO size
     uint64 header_bytes = sizeof(trunk_hdr);
+        trunk_hdr temp;
+	    printf("Size of individual components of header -------------- \n");
+	        printf("Size of P* pivot = %lu\n", sizeof(temp.aux_pivot));
+		    printf("Size of bundles = %lu\n", sizeof (temp.bundle));
+		        printf("Size of subbundle = %lu\n", sizeof(temp.subbundle));
+			    printf("Size of filter = %lu\n", sizeof(temp.sb_filter));
 
     uint64 pivot_bytes = (trunk_cfg->max_pivot_keys
                           * (data_cfg->max_key_size + sizeof(trunk_pivot_data)));

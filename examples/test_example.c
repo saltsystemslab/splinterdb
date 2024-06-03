@@ -115,8 +115,8 @@ void* run_upserts(void * arg) {
     //! Each thread will run this function. They will pass their portion of the
     //! input. We will stop the timer when number of operations is nops1/2/3.
     int thread_id = sched_getcpu();
-    int start_index = (count_point1 / threads) * (uint64_t) (thread_id % SYSTEM_MAX_THREADS);
-    int end_index = start_index + (count_point1 / SYSTEM_MAX_THREADS);
+    int start_index = (count_point1 / threads) * (uint64_t) (thread_id);
+    int end_index = start_index + (count_point1 / threads);
     slice key, value;
     //int w = 0;
     for (int i = start_index; i < end_index; i++) {
@@ -149,8 +149,8 @@ void* run_queries(void * arg) {
     //! Each thread will run this function. They will pass their portion of the
     //! input. We will stop the timer when number of operations is nops1/2/3.
     int thread_id = sched_getcpu();
-    int start_index = (count_point2 / threads) * (uint64_t) (thread_id % SYSTEM_MAX_THREADS);
-    int end_index = start_index + (count_point2 / SYSTEM_MAX_THREADS);
+    int start_index = (count_point2 / threads) * (uint64_t) (thread_id);
+    int end_index = start_index + (count_point2 / threads);
     slice key;
     //int w = 0;
     splinterdb_lookup_result  result;
@@ -266,8 +266,11 @@ int test(splinterdb *spl_handle, FILE *script_input, uint64_t nops,
             thread_args[i]->num_sections = num_sections;
             thread_args[i]->count_point1 = count_point1;
             thread_args[i]->count_point2 = count_point2;
+	    thread_args[i]->op = opcodes;
+	    thread_args[i]->run = run;
+	    thread_args[i]->load = load;
 	    thread_args[i]->threads = num_threads;
-            int c_result = pthread_create(&threads[i], NULL, run_queries, (void *) thread_args);
+            int c_result = pthread_create(&threads[i], NULL, run_queries, (void *) thread_args[i]);
             if (c_result != 0) {
                 fprintf(stderr, "Error creating thread %d\n", i);
                 return 1;
