@@ -3758,6 +3758,12 @@ trunk_memtable_flush_virtual(void *arg, uint64 generation) {
     trunk_memtable_flush(spl, generation);
 }
 
+void
+trunk_flush_async_internal(void * arg) {
+    trunk_flush_req * req = arg;
+    trunk_flush(req->spl, req->parent, req->child, req->is_space_rec, req->new_addr);
+}
+
 static inline uint64
 trunk_memtable_root_addr_for_lookup(trunk_handle *spl,
                                     uint64 generation,
