@@ -1990,7 +1990,8 @@ trunk_pivot_needs_flush(trunk_handle *spl,
                         trunk_node *node,
                         trunk_pivot_data *pdata,
                         uint64 max_branches_per_node) {
-    return trunk_pivot_logical_branch_count(spl, node, pdata)
+    uint16 branch_count = trunk_pivot_logical_branch_count(spl, node, pdata);
+    return branch_count
            > max_branches_per_node;
 }
 
@@ -3727,6 +3728,12 @@ static void
 trunk_memtable_flush_internal_virtual(void *arg, void *scratch) {
     trunk_memtable_args *mt_args = arg;
     trunk_memtable_flush_internal(mt_args->spl, mt_args->generation);
+}
+
+static void
+trunk_flush_async_internal(void * arg) {
+    trunk_flush_req *req = arg;
+    trunk_flush(req->spl, req->parent, req->child, req->is_space_rec, req->new_addr);
 }
 
 /*
@@ -7060,7 +7067,7 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result, slice nod
     key lower_bound = NEGATIVE_INFINITY_KEY;
     trunk_aux_pivot aux;
     uint16 hops = 1;
-
+    bool32 is_query_path_free = TRUE;
     uint16 height = trunk_node_height(&node);
     for (uint16 h = height; h > 0; h = h - hops) {
         uint16 pivot_no =
@@ -7148,8 +7155,23 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result, slice nod
                 trunk_node_claim(spl->cc, &node);
                 trunk_node_lock(spl->cc, &node);
             }
-            spl->flush++;
-            trunk_flush(spl, &node, pdata, FALSE, &new_addr);
+            //spl->flush++;
+            is_query_path_free = FALSE;
+            /**
+             *     task_enqueue(spl->ts,
+                 TASK_TYPE_MEMTABLE,
+                 trunk_memtable_flush_internal_virtual,
+                 &cmt->mt_args,
+                 FALSE);
+             */
+            trunk_flush_req * req = TYPED_ZALLOC(spl->heap_id, req);
+            req->spl = spl;
+            req->parent = &node;
+            req->child = pdata;
+            req->is_space_rec = FALSE;
+            req->new_addr = &new_addr;
+            task_enqueue(spl->ts, TASK_TYPE_NORMAL, trunk_flush_async_internal, &req, FALSE);
+            //trunk_flush(spl, &node, pdata, FALSE, &new_addr);
             if (node.addr == spl->root_addr) {
                 trunk_node_unclaim(spl->cc, &node);
                 trunk_node_unlock(spl->cc, &node);
@@ -7209,7 +7231,7 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result, slice nod
         //! Iterate through the query path array and check if we have a pointer to the
         //! node at which the result was found.
         for (uint16 h = height; h > 0; h--) {
-            if (result_found_at_node_addr == 0) {
+            if (result_found_at_node_addr == 0 || !is_query_path_free) {
                 break;
             }
             uint16 pivot_no =

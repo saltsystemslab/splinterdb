@@ -163,6 +163,7 @@ typedef struct trunk_branch {
 
 typedef struct trunk_handle             trunk_handle;
 typedef struct trunk_compact_bundle_req trunk_compact_bundle_req;
+typedef struct trunk_flush_req trunk_flush_req;
 
 typedef struct trunk_memtable_args {
    trunk_handle *spl;
@@ -290,6 +291,15 @@ typedef struct trunk_node {
    page_handle *page;
    trunk_hdr   *hdr;
 } trunk_node;
+
+struct trunk_flush_req {
+   trunk_handle *spl;
+   trunk_node *parent;
+   struct trunk_pivot_data *child;
+   bool32 is_space_rec;
+   uint64* new_addr;
+};
+
 
 typedef struct trunk_async_ctxt {
    trunk_async_cb cb; // IN: callback (requeues ctxt
