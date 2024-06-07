@@ -570,7 +570,7 @@ insert_random_messages(trunk_handle              *spl,
       test_int_to_key(&keybuf, keynum, key_size);
       key tuple_key = key_buffer_key(&keybuf);
 
-      int16 ref_count = 0;
+      int8 ref_count = 0;
       if (op != MESSAGE_TYPE_DELETE) {
          ref_count = ((int)(random_next_uint64(prg) % 256)) - 127;
          if (ref_count == 0) {

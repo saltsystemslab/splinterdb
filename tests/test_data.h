@@ -9,14 +9,14 @@
 extern data_config *test_data_config;
 
 typedef struct PACKED data_handle {
-   int16  ref_count;
+   int8  ref_count;
    uint8 data[0];
 } data_handle;
 
 void
 test_data_generate_message(const data_config *cfg,
                            message_type       type,
-                           uint16              ref_count,
+                           uint8              ref_count,
                            merge_accumulator *msg);
 
 static inline void

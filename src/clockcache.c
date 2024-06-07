@@ -2112,7 +2112,7 @@ clockcache_get_internal(clockcache   *cc,       // IN
    uint64            start, elapsed;
 
 #if SPLINTER_DEBUG
-   uint16 extent_ref_count = allocator_get_refcount(cc->al, base_addr);
+   uint8 extent_ref_count = allocator_get_refcount(cc->al, base_addr);
 
    // Dump allocated extents info for deeper debugging.
    if (extent_ref_count <= 1) {
