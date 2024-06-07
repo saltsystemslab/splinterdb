@@ -510,6 +510,13 @@ typedef struct ONDISK trunk_bundle {
    uint64 num_kv_bytes;
 } trunk_bundle;
 
+typedef struct ONDISK trunk_aux_pivot {
+    key range_start;
+    key range_end;
+    uint64 node_addr;
+    uint64 num_hops;
+} trunk_aux_pivot;
+
 /*
  *-----------------------------------------------------------------------------
  * Trunk headers: Disk-resident structure
@@ -546,7 +553,11 @@ typedef struct ONDISK trunk_hdr {
    trunk_bundle    bundle[TRUNK_MAX_BUNDLES];
    trunk_subbundle subbundle[TRUNK_MAX_SUBBUNDLES];
    routing_filter  sb_filter[TRUNK_MAX_SUBBUNDLE_FILTERS];
+   trunk_aux_pivot aux_pivot[17];
+   uint16 num_aux_pivots;
 } trunk_hdr;
+
+
 
 /*
  *-----------------------------------------------------------------------------
@@ -6934,7 +6945,9 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result)
 
    trunk_node node;
    trunk_root_get(spl, &node);
-
+   key lower_bound = NEGATIVE_INFINITY_KEY;
+   key upper_bound = POSITIVE_INFINITY_KEY;
+   trunk_aux_pivot aux_pivot;
    // release memtable lookup lock
    memtable_end_lookup(spl->mt_ctxt);
 
