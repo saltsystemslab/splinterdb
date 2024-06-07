@@ -6948,12 +6948,61 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result)
    key lower_bound = NEGATIVE_INFINITY_KEY;
    key upper_bound = POSITIVE_INFINITY_KEY;
    trunk_aux_pivot aux_pivot;
+   uint16 hops = 1;
+   uint64 result_found_at_node_addr;
    // release memtable lookup lock
    memtable_end_lookup(spl->mt_ctxt);
 
    // look in index nodes
    uint16 height = trunk_node_height(&node);
-   for (uint16 h = height; h > 0; h--) {
+   for (uint16 h = height; h > 0; h = h - hops) {
+       //! Check if there are P* pointers in the current node
+       trunk_node child;
+       if (node.hdr->num_aux_pivots != 0) {
+           //! see if target key falls in this range
+           key start, end;
+           int idx = -1;
+           for (int i = 0; i < node.hdr->num_aux_pivots; i++) {
+               start = node.hdr->aux_pivot[i].range_start;
+               end = node.hdr->aux_pivot[i].range_end;
+               if (start.kind == NEGATIVE_INFINITY) {
+                   int comp = slice_lex_cmp(target.user_slice, end.user_slice);
+                   if (comp < 0) {
+                       idx = i;
+                       break;
+                   }
+               } else if (end.kind == POSITIVE_INFINITY) {
+                   int comp = slice_lex_cmp(target.user_slice, start.user_slice);
+                   if (comp >= 0) {
+                       idx = i;
+                       break;
+                   }
+               } else {
+                   //! compare start first
+                   int comp_start = slice_lex_cmp(target.user_slice, start.user_slice);
+                   if (comp_start >= 0) {
+                       //! our key is greater than or equal to start key
+                       int comp_end = slice_lex_cmp(target.user_slice, end.user_slice);
+                       if (comp_end < 0) {
+                           idx = i;
+                           break;
+                       }
+                   }
+               }
+           }
+           if (idx != -1) {
+               hops = node.hdr->aux_pivot[idx].num_hops;
+               //printf("Using p* pointer\n");
+               trunk_node_get(spl->cc, node.hdr->aux_pivot[idx].node_addr, &child);
+               trunk_node_unget(spl->cc, &node);
+               node = child;
+               result_found_at_node_addr = node.addr;
+               spl->p_star++;
+               continue;
+           }
+       } else {
+           hops = 1;
+       }
       uint16 pivot_no =
          trunk_find_pivot(spl, &node, target, less_than_or_equal);
       debug_assert(pivot_no < trunk_num_children(spl, &node));
@@ -6963,7 +7012,6 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result)
       if (!should_continue) {
          goto found_final_answer_early;
       }
-      trunk_node child;
       trunk_node_get(spl->cc, pdata->addr, &child);
       trunk_node_unget(spl->cc, &node);
       node = child;

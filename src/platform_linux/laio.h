@@ -17,7 +17,7 @@
  * min & max values. But for now, these are defined to just the one page
  * size currently supported.
  */
-#define LAIO_MIN_PAGE_SIZE (4096)
+#define LAIO_MIN_PAGE_SIZE (8192)
 #define LAIO_MAX_PAGE_SIZE (8192)
 
 #define LAIO_DEFAULT_PAGE_SIZE        LAIO_MIN_PAGE_SIZE
