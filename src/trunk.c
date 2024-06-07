@@ -1977,7 +1977,7 @@ trunk_pivot_logical_branch_count(trunk_handle     *spl,
 static inline bool32
 trunk_pivot_needs_flush(trunk_handle     *spl,
                         trunk_node       *node,
-                        trunk_pivot_data *pdata
+                        trunk_pivot_data *pdata,
                         uint64 branch_threshold)
 {
    return trunk_pivot_logical_branch_count(spl, node, pdata)
@@ -7047,13 +7047,17 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result)
            trunk_node_unget(spl->cc, &node);
            if (node.addr == spl->root_addr) {
                //! Just lock the root node, no need to do anything else.
+	       trunk_root_get(spl, &node);
                trunk_node_claim(spl->cc, &node);
                trunk_node_lock(spl->cc, &node);
            } else {
-               trunk_root_get(spl, prev_addr, &temp);
+               trunk_root_get(spl, &temp);
                trunk_node_claim(spl->cc, &temp);
+#ifdef SPLINTER_DEBUG
+	       platform_default_log("Root node address %lu\n", temp.addr);
+#endif
                // TODO claim this node
-               trunk_node_get(spl->cc,  &node);
+               trunk_node_get(spl->cc, prev_addr,  &node);
                trunk_node_claim(spl->cc, &node);
                trunk_node_lock(spl->cc, &node);
            }
@@ -7065,6 +7069,9 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result)
            } else {
                trunk_node_unlock(spl->cc, &node);
                trunk_node_unclaim(spl->cc, &node);
+#ifdef SPLINTER_DEBUG
+	       platform_default_log("Root node address %lu\n", temp.addr);
+#endif
                trunk_node_unclaim(spl->cc, &temp);
                trunk_node_unget(spl->cc, &temp);
            }
@@ -7083,8 +7090,6 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result)
            lower_bound = pivot_start_range;
            upper_bound = ondisk_key_to_key(&trunk_get_pivot_data(spl, &node, pivot_no + 1)->pivot);
        }
-       trunk_node_unget(spl->cc, &node);
-       node = child;
        trunk_node_unget(spl->cc, &node);
        node = child;
    }
