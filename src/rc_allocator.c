@@ -504,7 +504,9 @@ rc_allocator_inc_ref(rc_allocator *al, uint64 addr)
 
    uint64 extent_no = addr / al->cfg->io_cfg->extent_size;
    debug_assert(extent_no < al->cfg->extent_capacity);
-
+#ifdef SPLINTER_DEBUG
+   platform_default_log("Refcount before incrementing = %d\n", al->ref_count[extent_no]);
+#endif
    uint8 ref_count = __sync_add_and_fetch(&al->ref_count[extent_no], 1);
    platform_assert(ref_count != 1 && ref_count != 0);
    if (SHOULD_TRACE(addr)) {
