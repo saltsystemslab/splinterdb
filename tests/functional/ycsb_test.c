@@ -649,7 +649,7 @@ load_ycsb_logs(int          argc,
 {
    uint64 _nphases            = 1;
    uint64 num_threads         = 0;
-   bool32 mlock_log           = TRUE;
+   bool32 mlock_log           = FALSE;
    char  *measurement_command = NULL;
    uint64 log_size_bytes      = 0;
    *use_existing              = FALSE;
