@@ -507,7 +507,7 @@ rc_allocator_inc_ref(rc_allocator *al, uint64 addr)
 #ifdef SPLINTER_DEBUG
    platform_default_log("Refcount before incrementing = %d\n", al->ref_count[extent_no]);
 #endif
-   uint8 ref_count = __sync_add_and_fetch(&al->ref_count[extent_no], 1);
+   uint16 ref_count = __sync_add_and_fetch(&al->ref_count[extent_no], 1);
    platform_assert(ref_count != 1 && ref_count != 0);
    if (SHOULD_TRACE(addr)) {
       platform_default_log("rc_allocator_inc_ref(%lu): %d -> %d\n",
@@ -526,7 +526,7 @@ rc_allocator_dec_ref(rc_allocator *al, uint64 addr, page_type type)
    uint64 extent_no = addr / al->cfg->io_cfg->extent_size;
    debug_assert(extent_no < al->cfg->extent_capacity);
 
-   uint8 ref_count = __sync_sub_and_fetch(&al->ref_count[extent_no], 1);
+   uint16 ref_count = __sync_sub_and_fetch(&al->ref_count[extent_no], 1);
 
    // We should have decremented the ref-count. If it rolls-over and
    // goes back to this value, it means the original value was 0. That
