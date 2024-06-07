@@ -6913,6 +6913,56 @@ trunk_pivot_lookup(trunk_handle      *spl,
       spl, node, &pdata->filter, cfg, pdata->start_branch, target, data);
 }
 
+
+/*
+ * Returns the amount of space used by each level of the tree
+ */
+bool32
+trunk_node_space_use(trunk_handle *spl, uint64 addr, void *arg)
+{
+    uint64    *bytes_used_on_level = (uint64 *)arg;
+    uint64     bytes_used_in_node  = 0;
+    trunk_node node;
+    trunk_node_get(spl->cc, addr, &node);
+    uint16 num_pivot_keys = trunk_num_pivot_keys(spl, &node);
+    uint16 num_children   = trunk_num_children(spl, &node);
+    for (uint16 branch_no = trunk_start_branch(spl, &node);
+         branch_no != trunk_end_branch(spl, &node);
+         branch_no = trunk_add_branch_number(spl, branch_no, 1))
+    {
+        trunk_branch *branch    = trunk_get_branch(spl, &node, branch_no);
+        key           start_key = NULL_KEY;
+        key           end_key   = NULL_KEY;
+        for (uint16 pivot_no = 0; pivot_no < num_pivot_keys; pivot_no++) {
+            if (1 && pivot_no != num_children
+                && trunk_branch_live_for_pivot(spl, &node, branch_no, pivot_no))
+            {
+                if (key_is_null(start_key)) {
+                    start_key = trunk_get_pivot(spl, &node, pivot_no);
+                }
+            } else {
+                if (!key_is_null(start_key)) {
+                    end_key = trunk_get_pivot(spl, &node, pivot_no);
+                    uint64 bytes_used_in_branch_range =
+                            btree_space_use_in_range(spl->cc,
+                                                     &spl->cfg.btree_cfg,
+                                                     branch->root_addr,
+                                                     PAGE_TYPE_BRANCH,
+                                                     start_key,
+                                                     end_key);
+                    bytes_used_in_node += bytes_used_in_branch_range;
+                }
+                start_key = NULL_KEY;
+                end_key   = NULL_KEY;
+            }
+        }
+    }
+
+    uint16 height = trunk_node_height(&node);
+    bytes_used_on_level[height] += bytes_used_in_node;
+    trunk_node_unget(spl->cc, &node);
+    return TRUE;
+}
 // If any change is made in here, please make similar change in
 // trunk_lookup_async
 platform_status
@@ -6997,7 +7047,6 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result)
                trunk_node_unget(spl->cc, &node);
                node = child;
                result_found_at_node_addr = node.addr;
-               spl->p_star++;
                continue;
            }
        } else {
@@ -7038,6 +7087,65 @@ found_final_answer_early:
       memtable_end_lookup(spl->mt_ctxt);
    } else {
       trunk_node_unget(spl->cc, &node);
+       trunk_node temp_root;
+       trunk_root_get(spl, &temp_root);
+       //! Iterate through the query path array and check if we have a pointer to the
+       //! node at which the result was found.
+       for (uint16 h = height; h > 0; h--) {
+           if (result_found_at_node_addr == 0) {
+               break;
+           }
+           uint16 pivot_no =
+                   trunk_find_pivot(spl, &temp_root, target, less_than_or_equal);
+           trunk_pivot_data *pivot = trunk_get_pivot_data(spl, &temp_root, pivot_no);
+           // TODO: check if we have enough space to add a P* pivot.
+           // TODO: check P* pivots also
+           if ((temp_root.addr == result_found_at_node_addr || pivot->addr == result_found_at_node_addr) || temp_root.hdr->num_aux_pivots >= 8) {
+               //! This means that we already have a p* pivot to this node.
+               //! Do not do anything;
+
+               break;
+           } else {
+               bool32 found = FALSE;
+               for (int i = 0; i < temp_root.hdr->num_aux_pivots; i++) {
+                   if (temp_root.hdr->aux_pivot[i].node_addr == result_found_at_node_addr) {
+                       found = TRUE;
+                       break;
+                   }
+               }
+               if (!found) {
+                   //! add P* pivot, check for space
+                   //! Calculate space taken by fractional branches
+                   uint64 bytes_used_by_level[TRUNK_MAX_HEIGHT] = {0};
+                   trunk_node_space_use(spl, temp_root.addr, bytes_used_by_level);
+                   // todo check why memtable capacity is 0
+                   if (bytes_used_by_level[h] >=
+                       spl->cfg.max_branches_per_node * 4 * 1024 * 1024 &&
+                       temp_root.hdr->num_aux_pivots > 56) {
+                       // dont do anything
+                   } else {
+                       uint8 num_elements = (temp_root.hdr->num_aux_pivots + 1);
+                       trunk_node_claim(spl->cc, &temp_root);
+                       trunk_node_lock(spl->cc, &temp_root);
+                       temp_root.hdr->aux_pivot[num_elements - 1] = aux_pivot;
+                       temp_root.hdr->num_aux_pivots = num_elements;
+                       trunk_node_unlock(spl->cc, &temp_root);
+                       trunk_node_unclaim(spl->cc, &temp_root);
+                       break;
+                   }
+               }
+
+           }
+           //! If no space, go one level down.
+           trunk_node child;
+           trunk_node_get(spl->cc, pivot->addr, &child);
+           //! Problem here is that we will have to read all the nodes again,
+           //! but it is likely that they will be in the cache.
+           //! This acts like the "recursion"
+           trunk_node_unget(spl->cc, &temp_root);
+           temp_root = child;
+       }
+       trunk_node_unget(spl->cc, &temp_root);
    }
    if (spl->cfg.use_stats) {
       threadid tid = platform_get_tid();
@@ -8491,55 +8599,7 @@ trunk_verify_tree(trunk_handle *spl)
    return success;
 }
 
-/*
- * Returns the amount of space used by each level of the tree
- */
-bool32
-trunk_node_space_use(trunk_handle *spl, uint64 addr, void *arg)
-{
-   uint64    *bytes_used_on_level = (uint64 *)arg;
-   uint64     bytes_used_in_node  = 0;
-   trunk_node node;
-   trunk_node_get(spl->cc, addr, &node);
-   uint16 num_pivot_keys = trunk_num_pivot_keys(spl, &node);
-   uint16 num_children   = trunk_num_children(spl, &node);
-   for (uint16 branch_no = trunk_start_branch(spl, &node);
-        branch_no != trunk_end_branch(spl, &node);
-        branch_no = trunk_add_branch_number(spl, branch_no, 1))
-   {
-      trunk_branch *branch    = trunk_get_branch(spl, &node, branch_no);
-      key           start_key = NULL_KEY;
-      key           end_key   = NULL_KEY;
-      for (uint16 pivot_no = 0; pivot_no < num_pivot_keys; pivot_no++) {
-         if (1 && pivot_no != num_children
-             && trunk_branch_live_for_pivot(spl, &node, branch_no, pivot_no))
-         {
-            if (key_is_null(start_key)) {
-               start_key = trunk_get_pivot(spl, &node, pivot_no);
-            }
-         } else {
-            if (!key_is_null(start_key)) {
-               end_key = trunk_get_pivot(spl, &node, pivot_no);
-               uint64 bytes_used_in_branch_range =
-                  btree_space_use_in_range(spl->cc,
-                                           &spl->cfg.btree_cfg,
-                                           branch->root_addr,
-                                           PAGE_TYPE_BRANCH,
-                                           start_key,
-                                           end_key);
-               bytes_used_in_node += bytes_used_in_branch_range;
-            }
-            start_key = NULL_KEY;
-            end_key   = NULL_KEY;
-         }
-      }
-   }
 
-   uint16 height = trunk_node_height(&node);
-   bytes_used_on_level[height] += bytes_used_in_node;
-   trunk_node_unget(spl->cc, &node);
-   return TRUE;
-}
 
 void
 trunk_print_space_use(platform_log_handle *log_handle, trunk_handle *spl)
