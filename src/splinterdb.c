@@ -165,7 +165,6 @@ splinterdb_init_config(const splinterdb_config *kvs_cfg, // IN
    splinterdb_config cfg = {0};
    memcpy(&cfg, kvs_cfg, sizeof(cfg));
    splinterdb_config_set_defaults(&cfg);
-
    io_config_init(&kvs->io_cfg,
                   cfg.page_size,
                   cfg.extent_size,
@@ -179,7 +178,6 @@ splinterdb_init_config(const splinterdb_config *kvs_cfg, // IN
    if (!SUCCESS(rc)) {
       return rc;
    }
-
    allocator_config_init(&kvs->allocator_cfg, &kvs->io_cfg, cfg.disk_size);
 
    clockcache_config_init(&kvs->cache_cfg,
@@ -364,6 +362,9 @@ splinterdb_create_or_open(const splinterdb_config *kvs_cfg,      // IN
       goto deinit_cache;
    }
 
+   kvs->spl->memtable_capacity = kvs_cfg->memtable_capacity;
+   kvs->spl->flush = 0;
+   kvs->spl->p_star = 0;
    *kvs_out = kvs;
    return platform_status_to_int(status);
 
@@ -395,6 +396,33 @@ deinit_kvhandle:
    }
 
    return platform_status_to_int(status);
+}
+
+void
+splinterdb_print_stats(splinterdb *kvs) {
+    platform_default_log("Number of loads: %lu\n", kvs->cache_handle.number_of_loads);
+    platform_default_log("Number of stores: %lu\n", kvs->cache_handle.number_of_stores);
+    trunk_print_space_use(Platform_default_log_handle, kvs->spl);
+}
+
+uint64_t splinterdb_p_star_stats(splinterdb *kvs) {
+    return kvs->spl->p_star;
+}
+
+uint64_t 
+splinterdb_get_num_of_loads(splinterdb *kvs) {
+   return kvs->cache_handle.number_of_loads;
+}
+
+uint64_t 
+splinterdb_get_num_of_stores(splinterdb *kvs) {
+   return kvs->cache_handle.number_of_stores;
+}
+
+void 
+splinterdb_clear_stats(splinterdb *kvs) {
+   kvs->cache_handle.number_of_loads = 0;
+   kvs->cache_handle.number_of_stores = 0;
 }
 
 int
@@ -647,7 +675,11 @@ splinterdb_lookup(const splinterdb         *kvs, // IN
    key                        target  = key_create_from_slice(user_key);
 
    platform_assert(kvs != NULL);
-   status = trunk_lookup(kvs->spl, target, &_result->value);
+   // trunk_node_lock(kvs->spl->cc, kvs->spl->trunk_root_lock);
+   //! Create slices for node lower and upper bound.
+   slice lower_bound = slice_create((size_t) sizeof(NEGATIVE_INFINITY), (void *)NEGATIVE_INFINITY);
+   slice upper_bound = slice_create((size_t) sizeof(POSITIVE_INFINITY), (void *)POSITIVE_INFINITY);
+   status = trunk_lookup(kvs->spl, target, &_result->value, lower_bound, upper_bound);
    return platform_status_to_int(status);
 }
 
@@ -849,4 +881,10 @@ const memtable_context *
 splinterdb_get_memtable_context_handle(const splinterdb *kvs)
 {
    return kvs->spl->mt_ctxt;
+}
+
+void
+splinterdb_flush_count(splinterdb *kvs) {
+    printf("Flush count %u\n", kvs->spl->flush);
+    printf("P star usage %lu\n", kvs->spl->p_star);
 }

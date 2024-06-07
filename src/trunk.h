@@ -163,6 +163,7 @@ typedef struct trunk_branch {
 
 typedef struct trunk_handle             trunk_handle;
 typedef struct trunk_compact_bundle_req trunk_compact_bundle_req;
+typedef struct trunk_flush_req trunk_flush_req;
 
 typedef struct trunk_memtable_args {
    trunk_handle *spl;
@@ -218,6 +219,9 @@ struct trunk_handle {
    // space rec queue
    srq srq;
 
+    uint16 flush;
+    uint64 p_star;
+    uint64 memtable_capacity;
    trunk_compacted_memtable compacted_memtable[/*cfg.mt_cfg.max_memtables*/];
 };
 
@@ -281,11 +285,21 @@ typedef void (*trunk_async_cb)(struct trunk_async_ctxt *ctxt);
 struct trunk_hdr;
 typedef struct trunk_hdr trunk_hdr;
 
+//! TODO add pstar struct here
 typedef struct trunk_node {
    uint64       addr;
    page_handle *page;
    trunk_hdr   *hdr;
 } trunk_node;
+
+struct trunk_flush_req {
+   trunk_handle *spl;
+   trunk_node *parent;
+   struct trunk_pivot_data *child;
+   bool32 is_space_rec;
+   uint64* new_addr;
+};
+
 
 typedef struct trunk_async_ctxt {
    trunk_async_cb cb; // IN: callback (requeues ctxt
@@ -333,8 +347,9 @@ typedef struct trunk_async_ctxt {
 platform_status
 trunk_insert(trunk_handle *spl, key tuple_key, message data);
 
+
 platform_status
-trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result);
+trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result, slice, slice);
 
 static inline bool32
 trunk_lookup_found(merge_accumulator *result)
@@ -471,3 +486,18 @@ trunk_config_init(trunk_config        *trunk_cfg,
                   platform_log_handle *log_handle);
 size_t
 trunk_get_scratch_size();
+
+
+platform_status
+trunk_flush(trunk_handle     *spl,
+            trunk_node       *parent,
+            struct trunk_pivot_data *pdata,
+            bool32            is_space_rec,
+            uint64* new_addr);
+
+void
+trunk_flush_one_level(trunk_handle     *spl,
+            trunk_node       *parent,
+            struct trunk_pivot_data *pdata,
+            bool32            is_space_rec,
+            uint64* new_addr);

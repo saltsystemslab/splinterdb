@@ -17,7 +17,7 @@
 
 // Provide sufficient disk, cache and memtable capacity to get somewhat
 // realistic configuration for most tests.
-#define TEST_CONFIG_DEFAULT_DISK_SIZE_GB         30
+#define TEST_CONFIG_DEFAULT_DISK_SIZE_GB         300
 #define TEST_CONFIG_DEFAULT_CACHE_SIZE_GB        1
 #define TEST_CONFIG_DEFAULT_MEMTABLE_CAPACITY_MB 24
 #define TEST_CONFIG_DEFAULT_SHMEM_SIZE_GB        2

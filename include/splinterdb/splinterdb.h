@@ -13,6 +13,7 @@
 #ifndef _SPLINTERDB_H_
 #define _SPLINTERDB_H_
 
+#include <stdint.h>
 #include "splinterdb/data.h"
 
 // Get a version string for this build of SplinterDB
@@ -206,6 +207,19 @@ splinterdb_deregister_thread(splinterdb *kvs);
 // Relies on data_config->encode_message
 int
 splinterdb_insert(const splinterdb *kvsb, slice key, slice value);
+
+// Print load and store stats
+void
+splinterdb_print_stats(splinterdb *kvs);
+
+uint64_t 
+splinterdb_get_num_of_loads(splinterdb *kvs);
+
+uint64_t 
+splinterdb_get_num_of_stores(splinterdb *kvs);
+
+void 
+splinterdb_clear_stats(splinterdb *kvs);
 
 // Delete a given key and any associated value / messages
 int
@@ -422,4 +436,8 @@ splinterdb_stats_print_lookup(const splinterdb *kvs);
 void
 splinterdb_stats_reset(splinterdb *kvs);
 
+void
+splinterdb_flush_count(splinterdb *kvs);
+
+uint64_t splinterdb_p_star_stats(splinterdb *kvs);
 #endif // _SPLINTERDB_H_

@@ -14,3 +14,8 @@ tags
 unit_tests_db
 compile_flags.txt
 build
+*.txt
+*.cdf
+*.df
+*.statistics
+*.csv
