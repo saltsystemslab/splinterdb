@@ -1977,10 +1977,11 @@ trunk_pivot_logical_branch_count(trunk_handle     *spl,
 static inline bool32
 trunk_pivot_needs_flush(trunk_handle     *spl,
                         trunk_node       *node,
-                        trunk_pivot_data *pdata)
+                        trunk_pivot_data *pdata
+                        uint64 branch_threshold)
 {
    return trunk_pivot_logical_branch_count(spl, node, pdata)
-          > spl->cfg.max_branches_per_node;
+          > branch_threshold;
 }
 
 /*
@@ -4769,7 +4770,7 @@ trunk_flush_fullest(trunk_handle *spl, trunk_node *node)
         pivot_no++) {
       trunk_pivot_data *pdata = trunk_get_pivot_data(spl, node, pivot_no);
       // if a pivot has too many branches, just flush it here
-      if (trunk_pivot_needs_flush(spl, node, pdata)) {
+      if (trunk_pivot_needs_flush(spl, node, pdata, spl->cfg.max_branches_per_node)) {
          rc = trunk_flush(spl, node, pdata, FALSE);
          if (!SUCCESS(rc)) {
             return rc;
@@ -6966,6 +6967,7 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result)
    }
 
    trunk_node node;
+   trunk_node temp;
    trunk_root_get(spl, &node);
    key lower_bound = NEGATIVE_INFINITY_KEY;
    key upper_bound = POSITIVE_INFINITY_KEY;
@@ -7028,14 +7030,63 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result)
          trunk_find_pivot(spl, &node, target, less_than_or_equal);
       debug_assert(pivot_no < trunk_num_children(spl, &node));
       trunk_pivot_data *pdata = trunk_get_pivot_data(spl, &node, pivot_no);
+       key pivot_start_range = ondisk_key_to_key(&pdata->pivot);
       bool32            should_continue =
          trunk_pivot_lookup(spl, &node, pdata, target, result);
       if (!should_continue) {
+          aux_pivot.range_start = lower_bound;
+          aux_pivot.range_end = upper_bound;
+          aux_pivot.node_addr = node.addr;
+          aux_pivot.num_hops = h;
+          result_found_at_node_addr = node.addr;
+          goto found_final_answer_early;
          goto found_final_answer_early;
       }
-      trunk_node_get(spl->cc, pdata->addr, &child);
-      trunk_node_unget(spl->cc, &node);
-      node = child;
+       if (trunk_pivot_needs_flush(spl, &node, pdata, 0)) {
+           uint64 prev_addr = node.addr;
+           trunk_node_unget(spl->cc, &node);
+           if (node.addr == spl->root_addr) {
+               //! Just lock the root node, no need to do anything else.
+               trunk_node_claim(spl->cc, &node);
+               trunk_node_lock(spl->cc, &node);
+           } else {
+               trunk_root_get(spl, prev_addr, &temp);
+               trunk_node_claim(spl->cc, &temp);
+               // TODO claim this node
+               trunk_node_get(spl->cc,  &node);
+               trunk_node_claim(spl->cc, &node);
+               trunk_node_lock(spl->cc, &node);
+           }
+           if (trunk_pivot_needs_flush(spl, &node, pdata, 0))
+                trunk_flush(spl, &node, pdata, FALSE);
+           if (node.addr == spl->root_addr) {
+               trunk_node_unclaim(spl->cc, &node);
+               trunk_node_unlock(spl->cc, &node);
+           } else {
+               trunk_node_unlock(spl->cc, &node);
+               trunk_node_unclaim(spl->cc, &node);
+               trunk_node_unclaim(spl->cc, &temp);
+               trunk_node_unget(spl->cc, &temp);
+           }
+       }
+       trunk_node_get(spl->cc, pdata->addr, &child);
+       if (pivot_no == node.hdr->num_pivot_keys - 1) {
+           //! Means that this is the last pivot in this node. So upper bound
+           //! will be the parent's upper bound.
+           lower_bound =  pivot_start_range;
+       } else if (pivot_no == 0) {
+           //! Means that this is the first pivot in the node, so lower bound
+           //! will be that of the parent.
+           upper_bound = ondisk_key_to_key(&trunk_get_pivot_data(spl, &node, pivot_no + 1)->pivot);
+       } else {
+           //! Pivot is somewhere in the middle, so get the lower and upper bound
+           lower_bound = pivot_start_range;
+           upper_bound = ondisk_key_to_key(&trunk_get_pivot_data(spl, &node, pivot_no + 1)->pivot);
+       }
+       trunk_node_unget(spl->cc, &node);
+       node = child;
+       trunk_node_unget(spl->cc, &node);
+       node = child;
    }
 
    // look in leaf
@@ -7043,6 +7094,12 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result)
    bool32            should_continue =
       trunk_pivot_lookup(spl, &node, pdata, target, result);
    if (!should_continue) {
+       aux_pivot.range_start = lower_bound;
+       aux_pivot.range_end = upper_bound;
+       aux_pivot.node_addr = node.addr;
+       aux_pivot.num_hops = height;
+       result_found_at_node_addr = node.addr;
+       goto found_final_answer_early;
       goto found_final_answer_early;
    }
 
