@@ -5461,6 +5461,7 @@ platform_default_log("Garbage collection for branch %lu\n", old_root_addr);
          key_buffer_copy_key(&req->start_key, max_key);
       }
 
+
       // only release locks on node after the garbage collection is complete
       trunk_node_unlock(spl->cc, &node);
       trunk_node_unclaim(spl->cc, &node);
