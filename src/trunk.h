@@ -131,6 +131,8 @@ typedef struct trunk_stats {
    uint64 leaf_splits_leaves_created;
    uint64 leaf_split_time_ns;
    uint64 leaf_split_max_time_ns;
+   uint64 number_of_p_stars;
+   uint64 p_star_query;
 
    uint64 single_leaf_splits;
    uint64 single_leaf_tuples;

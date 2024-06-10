@@ -7148,11 +7148,14 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result)
            }
            if (idx != -1) {
                hops = node.hdr->aux_pivot[idx].num_hops;
+               if (spl->cfg.use_stats) {
+                   threadid tid = platform_get_tid();
+                   spl->stats.p_star_query++;
+               }
 #if SPLINTER_DEBUG
 //	       platform_default_log("Using P* pointer\n");
 #endif
                //printf("Using p* pointer\n");
-	       platform_default_log("Using P* pointer\n");
                trunk_node_get(spl->cc, node.hdr->aux_pivot[idx].node_addr, &child);
                trunk_node_unget(spl->cc, &node);
                node = child;
@@ -7163,51 +7166,10 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result)
            hops = 1;
        }
       
-	   uint64 new_addr = pdata->addr;
        if (trunk_pivot_needs_flush(spl, &node, pdata, 0)) {
            uint64 prev_addr = node.addr;
-           trunk_node_unget(spl->cc, &node);
-	   query_path_free = FALSE;
-       //    if (node.addr == spl->root_addr) {
-               //! Just lock the root node, no need to do anything else.
-//	       trunk_root_get(spl, &node);
-//               trunk_node_claim(spl->cc, &node);
-//               trunk_node_lock(spl->cc, &node);
-//           } else {
-//               trunk_root_get(spl, &temp);
-//               trunk_node_claim(spl->cc, &temp);
-#if SPLINTER_DEBUG
-	       //platform_default_log("Root node address %lu\n", temp.addr);
-#endif
-               // TODO claim this node
-//               trunk_node_get(spl->cc, prev_addr,  &node);
-//               trunk_node_claim(spl->cc, &node);
-//               trunk_node_lock(spl->cc, &node);
-//           }
-//           if (trunk_pivot_needs_flush(spl, &node, pdata, 0)) {
-#if SPLINTER_DEBUG
-//		   	platform_default_log("Flushing from node %lu to node %lu\n", node.addr, pdata->addr);
-		   	
-#endif
-		   //platform_default_log("Flushing\n");
-//              }
-//	  else query_path_free = FALSE;
-//           if (node.addr == spl->root_addr) {
-//               trunk_node_unclaim(spl->cc, &node);
-//               trunk_node_unlock(spl->cc, &node);
-//           } else {
-//               trunk_node_unlock(spl->cc, &node);
-//               trunk_node_unclaim(spl->cc, &node);
-#if SPLINTER_DEBUG
-	       //platform_default_log("Root node address %lu\n", temp.addr);
-#endif
-//               trunk_node_unclaim(spl->cc, &temp);
-//               trunk_node_unget(spl->cc, &temp);
-//           }
-       }// else query_path_free = FALSE;
-       //! Need to recompute in case a node split.
-       //pivot_no = trunk_find_pivot(spl, &node, target, less_than_or_equal);
-       //pdata = trunk_get_pivot_data(spl, &node, pivot_no);
+           query_path_free = FALSE;
+       }
        trunk_node_get(spl->cc, pdata->addr, &child);
        if (pivot_no == node.hdr->num_pivot_keys - 1) {
            //! Means that this is the last pivot in this node. So upper bound
@@ -7268,10 +7230,9 @@ found_final_answer_early:
            trunk_pivot_data *pivot = trunk_get_pivot_data(spl, &temp_root, pivot_no);
            // TODO: check if we have enough space to add a P* pivot.
            // TODO: check P* pivots also
-           if ((temp_root.addr == result_found_at_node_addr || pivot->addr == result_found_at_node_addr) || temp_root.hdr->num_aux_pivots >= 8) {
+           if ((temp_root.addr == result_found_at_node_addr || pivot->addr == result_found_at_node_addr)) {
                //! This means that we already have a p* pivot to this node.
                //! Do not do anything;
-
                break;
            } else {
                bool32 found = FALSE;
@@ -7304,6 +7265,10 @@ found_final_answer_early:
                        temp_root.hdr->num_aux_pivots = num_elements;
                        trunk_node_unlock(spl->cc, &temp_root);
                        trunk_node_unclaim(spl->cc, &temp_root);
+                       if (spl->cfg.use_stats) {
+                           threadid tid = platform_get_tid();
+                           spl->stats->number_of_p_stars++;
+                       }
                        break;
                    }
                }
@@ -9259,6 +9224,7 @@ trunk_print_insertion_stats(platform_log_handle *log_handle, trunk_handle *spl)
    platform_log(log_handle, "| updates:           %10lu\n", global->updates);
    platform_log(log_handle, "| deletions:         %10lu\n", global->deletions);
    platform_log(log_handle, "| completed deletes: %10lu\n", global->discarded_deletes);
+   platform_log(log_handle, "| number of P* pointers: %lu\n", global->number_of_p_stars);
    platform_log(log_handle, "------------------------------------------------------------------------------------\n");
    platform_log(log_handle, "| root stalls:       %10lu\n", global->memtable_flush_root_full);
    platform_log(log_handle, "------------------------------------------------------------------------------------\n");
@@ -9463,6 +9429,7 @@ trunk_print_lookup_stats(platform_log_handle *log_handle, trunk_handle *spl)
    platform_log(log_handle, "-----------------------------------------------------------------------------------\n");
    platform_log(log_handle, "| height:            %u\n", height);
    platform_log(log_handle, "| lookups:           %lu\n", lookups);
+   platform_log(log_handle, "| queries by p star: %lu\n", global->p_star_query);
    platform_log(log_handle, "| lookups found:     %lu\n", global->lookups_found);
    platform_log(log_handle, "| lookups not found: %lu\n", global->lookups_not_found);
    platform_log(log_handle, "-----------------------------------------------------------------------------------\n");
