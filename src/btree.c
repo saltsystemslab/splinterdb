@@ -1241,6 +1241,9 @@ btree_inc_ref_range(cache              *cc,
                     key                 end_key)
 {
    debug_assert(btree_key_compare(cfg, start_key, end_key) <= 0);
+#if SPLINTER_DEBUG
+//   platform_default_log("Incrementing refcount for start key %s and end key %s in branch %lu\n", (char * )slice_data(start_key.user_slice), (char *)slice_data(end_key.user_slice), root_addr);
+#endif
    uint64 meta_page_addr = btree_root_to_meta_addr(cfg, root_addr, 0);
    mini_keyed_inc_ref(
       cc, cfg->data_cfg, PAGE_TYPE_BRANCH, meta_page_addr, start_key, end_key);

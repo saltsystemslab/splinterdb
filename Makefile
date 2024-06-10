@@ -72,7 +72,7 @@ INCLUDE = -I $(INCDIR) -I $(SRCDIR) -I $(SRCDIR)/platform_$(PLATFORM) -I $(TESTS
 
 # use += here, so that extra flags can be provided via the environment
 
-CFLAGS += -D_GNU_SOURCE -ggdb -Wall -pthread -Wfatal-errors -Werror -Wvla
+CFLAGS += -D_GNU_SOURCE -ggdb -Wall -pthread -Wfatal-errors -Werror -Wvla -Wno-unused-variable
 CFLAGS += -DXXH_STATIC_LINKING_ONLY -fPIC
 CFLAGS += -DSPLINTERDB_PLATFORM_DIR=$(PLATFORM_DIR)
 
@@ -116,6 +116,7 @@ endif
 BUILD_DIR := $(BUILD_MODE)
 
 ifeq "$(BUILD_MODE)" "debug"
+ CFLAGS    += -pg
    CFLAGS    += -DSPLINTER_DEBUG
 else ifeq "$(BUILD_MODE)" "release"
    CFLAGS    += -Ofast -flto

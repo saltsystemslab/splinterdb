@@ -1518,7 +1518,10 @@ release_claim:
    debug_status = clockcache_clear_flag(cc, entry_number, CC_CLAIMED);
    debug_assert(debug_status);
 release_ref:
-   clockcache_dec_ref(cc, entry_number, tid);
+#if SPLINTER_DEBUG
+//	platform_default_log("Releasing ref for entry number %d\n", entry_number);
+#endif   
+	clockcache_dec_ref(cc, entry_number, tid);
 out:
    return;
 }
@@ -2113,10 +2116,13 @@ clockcache_get_internal(clockcache   *cc,       // IN
 
 #if SPLINTER_DEBUG
    uint8 extent_ref_count = allocator_get_refcount(cc->al, base_addr);
-
    // Dump allocated extents info for deeper debugging.
    if (extent_ref_count <= 1) {
-      allocator_print_allocated(cc->al);
+//      allocator_print_allocated(cc->al);
+//
+   }
+   if (extent_ref_count > 250) {
+     platform_default_log("Extent has a refcount of greater than 250\n");
    }
    debug_assert((extent_ref_count > 1),
                 "Attempt to get a buffer for page addr=%lu"
