@@ -7095,6 +7095,7 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result)
    memtable_end_lookup(spl->mt_ctxt);
    // look in index nodes
    uint16 height = trunk_node_height(&node);
+   bool32 query_path_free_array[TRUNK_MAX_HEIGHT];
    for (uint16 h = height; h > 0; h = h - hops) {
        //! Check if there are P* pointers in the current node
        trunk_node child;
@@ -7150,7 +7151,7 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result)
                hops = node.hdr->aux_pivot[idx].num_hops;
                if (spl->cfg.use_stats) {
                    threadid tid = platform_get_tid();
-                   spl->stats.p_star_query++;
+                   spl->stats->p_star_query++;
                }
 #if SPLINTER_DEBUG
 //	       platform_default_log("Using P* pointer\n");
@@ -7168,7 +7169,9 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result)
       
        if (trunk_pivot_needs_flush(spl, &node, pdata, 0)) {
            uint64 prev_addr = node.addr;
-           query_path_free = FALSE;
+           query_path_free_array[h] = FALSE;
+       } else {
+           query_path_free_array[h] = TRUE;
        }
        trunk_node_get(spl->cc, pdata->addr, &child);
        if (pivot_no == node.hdr->num_pivot_keys - 1) {
@@ -7222,8 +7225,18 @@ found_final_answer_early:
        //! Iterate through the query path array and check if we have a pointer to the
        //! node at which the result was found.
        for (uint16 h = height; h > 0; h--) {
-           if (result_found_at_node_addr == 0 || !query_path_free) {
+           if (result_found_at_node_addr == 0) {
                break;
+           }
+           if (!query_path_free_array[h]) {
+               trunk_node child;
+               trunk_node_get(spl->cc, pivot->addr, &child);
+               //! Problem here is that we will have to read all the nodes again,
+               //! but it is likely that they will be in the cache.
+               //! This acts like the "recursion"
+               trunk_node_unget(spl->cc, &temp_root);
+               temp_root = child;
+               continue;
            }
            uint16 pivot_no =
                    trunk_find_pivot(spl, &temp_root, target, less_than_or_equal);
