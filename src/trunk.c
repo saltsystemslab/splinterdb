@@ -510,7 +510,7 @@ typedef struct ONDISK trunk_bundle {
    uint64 num_kv_bytes;
 } trunk_bundle;
 
-typedef struct ONDISK trunk_aux_pivot {
+typedef struct trunk_aux_pivot {
     key range_start;
     key range_end;
     uint64 node_addr;
@@ -845,7 +845,7 @@ static inline void                 trunk_inc_filter_ref            (trunk_handle
 
 static inline void                 trunk_dec_filter                (trunk_handle *spl, routing_filter *filter);
 void                               trunk_compact_bundle            (void *arg, void *scratch);
-platform_status                    trunk_flush                     (trunk_handle *spl, trunk_node *parent, trunk_pivot_data *pdata, bool32 is_space_rec);
+platform_status                    trunk_flush                     (trunk_handle *spl, trunk_node *parent, trunk_pivot_data *pdata, bool32 is_space_rec, uint64* new_addr);
 platform_status                    trunk_flush_fullest             (trunk_handle *spl, trunk_node *node);
 static inline bool32                 trunk_needs_split               (trunk_handle *spl, trunk_node *node);
 void                               trunk_split_leaf                (trunk_handle *spl, trunk_node *parent, trunk_node *leaf, uint16 child_idx);
@@ -4506,6 +4506,10 @@ trunk_flush_into_bundle(trunk_handle             *spl,    // IN
          trunk_log_stream_if_enabled(
             spl, &stream, "%lu\n", parent_branch->root_addr);
          trunk_branch *new_branch = trunk_get_new_branch(spl, child);
+
+#if SPLINTER_DEBUG
+	 platform_default_log("Parent branch address %lu and child new branch address %lu for node %lu\n", parent_branch->root_addr, new_branch->root_addr, child->addr);
+#endif
          *new_branch              = *parent_branch;
       }
       child_sb->end_branch = trunk_end_branch(spl, child);
@@ -4647,12 +4651,17 @@ platform_status
 trunk_flush(trunk_handle     *spl,
             trunk_node       *parent,
             trunk_pivot_data *pdata,
-            bool32            is_space_rec)
+            bool32            is_space_rec,
+	    uint64* new_addr)
 {
-   platform_status rc;
 
+#if SPLINTER_DEBUG
+//	 platform_default_log("Flushing from node %lu to node %lu\n", parent->addr, pdata->addr);
+#endif
+   platform_status rc;
    uint64   wait_start, flush_start;
    threadid tid;
+   parent->hdr->num_aux_pivots = 0;
    if (spl->cfg.use_stats) {
       tid        = platform_get_tid();
       wait_start = platform_get_timestamp();
@@ -4660,6 +4669,7 @@ trunk_flush(trunk_handle     *spl,
 
    trunk_node new_child;
    trunk_copy_node_and_add_to_parent(spl, parent, pdata, &new_child);
+
 
    platform_assert(trunk_room_to_flush(spl, parent, &new_child, pdata),
                    "Flush failed: %lu %lu\n",
@@ -4701,6 +4711,9 @@ trunk_flush(trunk_handle     *spl,
                                        bundle,
                                        req->input_pivot_tuple_count,
                                        req->input_pivot_kv_byte_count);
+#if SPLINTER_DEBUG
+   //platform_default_log("Incrementing refcount for child at address %lu\n", new_child.addr);
+#endif
    trunk_bundle_inc_pivot_rc(spl, &new_child, bundle);
    debug_assert(allocator_page_valid(spl->al, req->addr));
    req->type = is_space_rec ? TRUNK_COMPACTION_TYPE_FLUSH
@@ -4711,27 +4724,39 @@ trunk_flush(trunk_handle     *spl,
       if (trunk_node_is_leaf(&new_child)) {
          platform_free(spl->heap_id, req);
          uint16 child_idx = trunk_pdata_to_pivot_index(spl, parent, pdata);
+#if SPLINTER_DEBUG
+	 platform_default_log("Splitting leaf node %lu\n", new_child.addr);
+#endif
          trunk_split_leaf(spl, parent, &new_child, child_idx);
+
+      *new_addr = new_child.addr;
          return STATUS_OK;
       } else {
+	 #if SPLINTER_DEBUG
+	      platform_default_log("Splitting internal node at address %lu\n", new_child.addr);
+#endif
          uint64 child_idx = trunk_pdata_to_pivot_index(spl, parent, pdata);
          trunk_split_index(spl, parent, &new_child, child_idx, req);
+
+      *new_addr = new_child.addr;
       }
    }
 
    debug_assert(trunk_verify_node(spl, &new_child));
 
-   // flush the child if full
+   //flush the child if full
    while (trunk_node_is_full(spl, &new_child)) {
       platform_assert(!trunk_node_is_leaf(&new_child),
                       "Full leaf after leaf split\n");
       trunk_flush_fullest(spl, &new_child);
    }
+   *new_addr = new_child.addr;
 
    trunk_node_unlock(spl->cc, &new_child);
    trunk_node_unclaim(spl->cc, &new_child);
    trunk_node_unget(spl->cc, &new_child);
 
+//   rc = STATUS_OK;
    rc = trunk_compact_bundle_enqueue(spl, "enqueue", req);
    platform_assert_status_ok(rc);
    if (spl->cfg.use_stats) {
@@ -4761,6 +4786,7 @@ trunk_flush_fullest(trunk_handle *spl, trunk_node *node)
 {
    platform_status rc               = STATUS_OK;
    uint16          fullest_pivot_no = TRUNK_INVALID_PIVOT_NO;
+   uint64 new_addr;
 
    threadid tid;
    if (spl->cfg.use_stats) {
@@ -4776,7 +4802,7 @@ trunk_flush_fullest(trunk_handle *spl, trunk_node *node)
       trunk_pivot_data *pdata = trunk_get_pivot_data(spl, node, pivot_no);
       // if a pivot has too many branches, just flush it here
       if (trunk_pivot_needs_flush(spl, node, pdata, spl->cfg.max_branches_per_node)) {
-         rc = trunk_flush(spl, node, pdata, FALSE);
+         rc = trunk_flush(spl, node, pdata, FALSE, &new_addr);
          if (!SUCCESS(rc)) {
             return rc;
          }
@@ -4805,7 +4831,7 @@ trunk_flush_fullest(trunk_handle *spl, trunk_node *node)
       platform_assert(fullest_pivot_no != TRUNK_INVALID_PIVOT_NO);
       trunk_pivot_data *pdata =
          trunk_get_pivot_data(spl, node, fullest_pivot_no);
-      return trunk_flush(spl, node, pdata, FALSE);
+      return trunk_flush(spl, node, pdata, FALSE, &new_addr);
    }
    return rc;
 }
@@ -5126,11 +5152,16 @@ trunk_compact_bundle(void *arg, void *scratch_buf)
    key                       start_key = key_buffer_key(&req->start_key);
    key                       end_key   = key_buffer_key(&req->end_key);
 
+#if SPLINTER_DEBUG
+  // platform_default_log("Compacting bundle for node %lu\n", req->addr);
+#endif
    /*
     * 1. Acquire node read lock
     */
    trunk_node node;
    trunk_node_get(spl->cc, req->addr, &node);
+   //trunk_node_claim(spl->cc , &node);
+   //trunk_node_lock(spl->cc, &node);
 
    // timers for stats if enabled
    uint64 compaction_start, pack_start;
@@ -5182,6 +5213,9 @@ trunk_compact_bundle(void *arg, void *scratch_buf)
    }
 
    trunk_bundle *bundle       = trunk_get_bundle(spl, &node, req->bundle_no);
+#if SPLINTER_DEBUG
+   platform_default_log("Compacting bundle %d with start subbundle %d and end subbundle %d for node %lu\n", req->bundle_no, bundle->start_subbundle, bundle->end_subbundle, node.addr);
+#endif
    uint16 bundle_start_branch = trunk_bundle_start_branch(spl, &node, bundle);
    uint16 bundle_end_branch   = trunk_bundle_end_branch(spl, &node, bundle);
    uint16 num_branches        = trunk_bundle_branch_count(spl, &node, bundle);
@@ -5241,12 +5275,17 @@ trunk_compact_bundle(void *arg, void *scratch_buf)
 
    /*
     * 6. Release read lock
-    */
+    */	
+   //trunk_node_unlock(spl->cc, &node);
+   //trunk_node_unclaim(spl->cc, &node);
    trunk_node_unget(spl->cc, &node);
 
    /*
     * 7. Perform compaction
     */
+#if SPLINTER_DEBUG
+platform_default_log("Performing compaction for bundle %d with start subbundle %d and end subbundle %d for node %lu\n", req->bundle_no, bundle->start_subbundle, bundle->end_subbundle, node.addr);
+#endif
    merge_iterator *merge_itor;
    rc = merge_iterator_create(spl->heap_id,
                               spl->cfg.data_cfg,
@@ -5366,6 +5405,9 @@ trunk_compact_bundle(void *arg, void *scratch_buf)
 
       if (trunk_bundle_live(spl, &node, req->bundle_no)) {
          if (num_tuples != 0) {
+#if SPLINTER_DEBUG
+platform_default_log("Replacing bundle branches for new branch %lu with start subbundle %d and end subbundle %d for node %lu\n", new_branch.root_addr, bundle->start_subbundle, bundle->end_subbundle, node.addr);
+#endif
             trunk_replace_bundle_branches(spl, &node, &new_branch, req);
             num_replacements++;
             trunk_log_stream_if_enabled(spl,
@@ -5374,6 +5416,10 @@ trunk_compact_bundle(void *arg, void *scratch_buf)
                                         new_branch.root_addr,
                                         node.addr);
          } else {
+
+#if SPLINTER_DEBUG
+platform_default_log("Replacing bundle branches for new branch %lu with start subbundle %d and end subbundle %d for node %lu\n", new_branch.root_addr, bundle->start_subbundle, bundle->end_subbundle, node.addr);
+#endif
             trunk_replace_bundle_branches(spl, &node, NULL, req);
             trunk_log_stream_if_enabled(
                spl, &stream, "compact_bundle empty %lu\n", node.addr);
@@ -5404,6 +5450,10 @@ trunk_compact_bundle(void *arg, void *scratch_buf)
       debug_assert(trunk_verify_node(spl, &node));
 
       // garbage collect the old path and bundle
+
+#if SPLINTER_DEBUG
+platform_default_log("Garbage collection for branch %lu\n", old_root_addr);
+#endif
       trunk_garbage_collect_bundle(spl, old_root_addr, req);
 
       if (should_continue) {
@@ -5597,6 +5647,7 @@ trunk_split_index(trunk_handle             *spl,
          spl, key_buffer_key(&req->start_key), trunk_min_key(spl, left_node)));
       key_buffer_copy_key(&req->end_key, trunk_max_key(spl, left_node));
 
+      //rc = STATUS_OK;
       rc = trunk_compact_bundle_enqueue(spl, "split to", next_req);
       platform_assert_status_ok(rc);
    }
@@ -5739,6 +5790,9 @@ trunk_split_leaf(trunk_handle *spl,
       estimated_unique_keys * kv_bytes / num_tuples;
    uint64 target_num_leaves =
       estimated_unique_kv_bytes / spl->cfg.target_leaf_kv_bytes;
+#if SPLINTER_DEBUG
+   platform_default_log("Number of leaves for node %lu is %lu\n", leaf->addr, target_num_leaves);
+#endif
    if (target_num_leaves <= 1) {
       if (estimated_unique_keys > trunk_single_leaf_threshold(spl)) {
          target_num_leaves = 2;
@@ -5995,6 +6049,7 @@ trunk_split_leaf(trunk_handle *spl,
             &req->end_key, spl->heap_id, trunk_max_key(spl, leaf));
          req->node_id = leaf->hdr->node_id;
 
+//	 rc = STATUS_OK;
          rc = trunk_compact_bundle_enqueue(spl, "enqueue", req);
          platform_assert_status_ok(rc);
 
@@ -6031,6 +6086,7 @@ trunk_split_leaf(trunk_handle *spl,
    req->node_id = leaf->hdr->node_id;
 
    // issue compact_bundle for leaf and release
+//   rc = STATUS_OK;
    rc = trunk_compact_bundle_enqueue(spl, "enqueue", req);
    platform_assert_status_ok(rc);
 
@@ -6664,7 +6720,8 @@ trunk_reclaim_space(trunk_handle *spl)
          if (spl->cfg.use_stats) {
             sr_start = platform_get_timestamp();
          }
-         platform_status rc = trunk_flush(spl, &node, pdata, TRUE);
+	 uint64 new_addr;
+         platform_status rc = trunk_flush(spl, &node, pdata, TRUE, &new_addr);
          if (spl->cfg.use_stats) {
             const threadid tid    = platform_get_tid();
             uint16         height = trunk_node_height(&node);
@@ -6787,6 +6844,9 @@ trunk_filter_lookup(trunk_handle      *spl,
       trunk_branch   *branch = trunk_get_branch(spl, node, branch_no);
       bool32          local_found;
       platform_status rc;
+#if SPLINTER_DEBUG
+      platform_default_log("Node %lu using branch %lu\n", node->addr, branch->root_addr);
+#endif
       rc =
          trunk_btree_lookup_and_merge(spl, branch, target, data, &local_found);
       platform_assert_status_ok(rc);
@@ -7001,10 +7061,9 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result)
    key upper_bound = POSITIVE_INFINITY_KEY;
    trunk_aux_pivot aux_pivot;
    uint16 hops = 1;
-   uint64 result_found_at_node_addr;
+   uint64 result_found_at_node_addr = 0;
    // release memtable lookup lock
    memtable_end_lookup(spl->mt_ctxt);
-
    // look in index nodes
    uint16 height = trunk_node_height(&node);
    for (uint16 h = height; h > 0; h = h - hops) {
@@ -7044,6 +7103,9 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result)
            }
            if (idx != -1) {
                hops = node.hdr->aux_pivot[idx].num_hops;
+#if SPLINTER_DEBUG
+//	       platform_default_log("Using P* pointer\n");
+#endif
                //printf("Using p* pointer\n");
                trunk_node_get(spl->cc, node.hdr->aux_pivot[idx].node_addr, &child);
                trunk_node_unget(spl->cc, &node);
@@ -7068,8 +7130,9 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result)
           aux_pivot.num_hops = h;
           result_found_at_node_addr = node.addr;
           goto found_final_answer_early;
-         goto found_final_answer_early;
       }
+      
+	   uint64 new_addr = pdata->addr;
        if (trunk_pivot_needs_flush(spl, &node, pdata, 0)) {
            uint64 prev_addr = node.addr;
            trunk_node_unget(spl->cc, &node);
@@ -7081,30 +7144,38 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result)
            } else {
                trunk_root_get(spl, &temp);
                trunk_node_claim(spl->cc, &temp);
-#ifdef SPLINTER_DEBUG
-	       platform_default_log("Root node address %lu\n", temp.addr);
+#if SPLINTER_DEBUG
+	       //platform_default_log("Root node address %lu\n", temp.addr);
 #endif
                // TODO claim this node
                trunk_node_get(spl->cc, prev_addr,  &node);
                trunk_node_claim(spl->cc, &node);
                trunk_node_lock(spl->cc, &node);
            }
-           if (trunk_pivot_needs_flush(spl, &node, pdata, 0))
-                trunk_flush(spl, &node, pdata, FALSE);
+           if (trunk_pivot_needs_flush(spl, &node, pdata, 0)) {
+#if SPLINTER_DEBUG
+//		   	platform_default_log("Flushing from node %lu to node %lu\n", node.addr, pdata->addr);
+		   	
+#endif
+                trunk_flush(spl, &node, pdata, FALSE, &new_addr);
+              }
            if (node.addr == spl->root_addr) {
                trunk_node_unclaim(spl->cc, &node);
                trunk_node_unlock(spl->cc, &node);
            } else {
                trunk_node_unlock(spl->cc, &node);
                trunk_node_unclaim(spl->cc, &node);
-#ifdef SPLINTER_DEBUG
-	       platform_default_log("Root node address %lu\n", temp.addr);
+#if SPLINTER_DEBUG
+	       //platform_default_log("Root node address %lu\n", temp.addr);
 #endif
                trunk_node_unclaim(spl->cc, &temp);
                trunk_node_unget(spl->cc, &temp);
            }
        }
-       trunk_node_get(spl->cc, pdata->addr, &child);
+       //! Need to recompute in case a node split.
+       //pivot_no = trunk_find_pivot(spl, &node, target, less_than_or_equal);
+       //pdata = trunk_get_pivot_data(spl, &node, pivot_no);
+       trunk_node_get(spl->cc, new_addr, &child);
        if (pivot_no == node.hdr->num_pivot_keys - 1) {
            //! Means that this is the last pivot in this node. So upper bound
            //! will be the parent's upper bound.
@@ -7124,7 +7195,10 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result)
 
    // look in leaf
    trunk_pivot_data *pdata = trunk_get_pivot_data(spl, &node, 0);
-   bool32            should_continue =
+#if SPLINTER_DEBUG
+//   platform_default_log("Querying a leaf node %lu\n", pdata->addr);
+#endif
+      bool32         should_continue =
       trunk_pivot_lookup(spl, &node, pdata, target, result);
    if (!should_continue) {
        aux_pivot.range_start = lower_bound;
@@ -7133,7 +7207,6 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result)
        aux_pivot.num_hops = height;
        result_found_at_node_addr = node.addr;
        goto found_final_answer_early;
-      goto found_final_answer_early;
    }
 
    debug_assert(merge_accumulator_is_null(result)
@@ -7162,7 +7235,7 @@ found_final_answer_early:
            trunk_pivot_data *pivot = trunk_get_pivot_data(spl, &temp_root, pivot_no);
            // TODO: check if we have enough space to add a P* pivot.
            // TODO: check P* pivots also
-           if ((temp_root.addr == result_found_at_node_addr || pivot->addr == result_found_at_node_addr) || temp_root.hdr->num_aux_pivots >= 8) {
+           if ((temp_root.addr == result_found_at_node_addr || pivot->addr == result_found_at_node_addr) || temp_root.hdr->num_aux_pivots >= 8 || result_found_at_node_addr == 0) {
                //! This means that we already have a p* pivot to this node.
                //! Do not do anything;
 
@@ -7182,7 +7255,7 @@ found_final_answer_early:
                    trunk_node_space_use(spl, temp_root.addr, bytes_used_by_level);
                    // todo check why memtable capacity is 0
                    if (bytes_used_by_level[h] >=
-                       spl->cfg.max_branches_per_node * 4 * 1024 * 1024 &&
+                       spl->cfg.max_branches_per_node * 24 * 1024 * 1024 &&
                        temp_root.hdr->num_aux_pivots > 56) {
                        // dont do anything
                    } else {
@@ -7191,6 +7264,14 @@ found_final_answer_early:
                        trunk_node_lock(spl->cc, &temp_root);
                        temp_root.hdr->aux_pivot[num_elements - 1] = aux_pivot;
                        temp_root.hdr->num_aux_pivots = num_elements;
+
+#if SPLINTER_DEBUG
+		       platform_default_log("Adding P* to node %lu from node %lu\n", aux_pivot.node_addr, temp_root.addr);
+		       trunk_node temp;
+		       trunk_node_get(spl->cc, aux_pivot.node_addr, &temp);
+		       trunk_pivot_data *temp_data = trunk_get_pivot_data(spl, &temp, 0);
+		       trunk_node_unget(spl->cc, &temp);
+#endif
                        trunk_node_unlock(spl->cc, &temp_root);
                        trunk_node_unclaim(spl->cc, &temp_root);
                        break;
