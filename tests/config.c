@@ -25,7 +25,7 @@
 // Setup reasonable BTree and branch tree configurations
 #define TEST_CONFIG_DEFAULT_FILTER_INDEX_SIZE     256
 #define TEST_CONFIG_DEFAULT_FANOUT                8
-#define TEST_CONFIG_DEFAULT_MAX_BRANCHES_PER_NODE 24
+#define TEST_CONFIG_DEFAULT_MAX_BRANCHES_PER_NODE 48
 
 // Deal with reasonable key / message sizes for tests
 // There are open issues in some tests for smaller key-sizes.

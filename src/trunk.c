@@ -7088,6 +7088,7 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result)
    key upper_bound = POSITIVE_INFINITY_KEY;
    trunk_aux_pivot aux_pivot;
    bool32 query_path_free = TRUE;
+   uint64 free_from_node_addr = 0;
    uint16 hops = 1;
    uint64 result_found_at_node_addr = 0;
 //   bool query_path_free = FALSE;
@@ -7095,7 +7096,6 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result)
    memtable_end_lookup(spl->mt_ctxt);
    // look in index nodes
    uint16 height = trunk_node_height(&node);
-   bool32 query_path_free_array[TRUNK_MAX_HEIGHT];
    for (uint16 h = height; h > 0; h = h - hops) {
        //! Check if there are P* pointers in the current node
        trunk_node child;
@@ -7168,10 +7168,13 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result)
        }
       
        if (trunk_pivot_needs_flush(spl, &node, pdata, 0)) {
-           uint64 prev_addr = node.addr;
-           query_path_free_array[h] = FALSE;
+           free_from_node_addr = 0;
+           query_path_free = FALSE;
+       } else if (!trunk_pivot_needs_flush(spl, &node, pdata, 0) && free_from_node_addr != 0) {
+          // do nothing
        } else {
-           query_path_free_array[h] = TRUE;
+           free_from_node_addr = node.addr;
+           query_path_free = TRUE;
        }
        trunk_node_get(spl->cc, pdata->addr, &child);
        if (pivot_no == node.hdr->num_pivot_keys - 1) {
@@ -7220,83 +7223,47 @@ found_final_answer_early:
       memtable_end_lookup(spl->mt_ctxt);
    } else {
       trunk_node_unget(spl->cc, &node);
-       trunk_node temp_root;
-       trunk_root_get(spl, &temp_root);
-       //! Iterate through the query path array and check if we have a pointer to the
-       //! node at which the result was found.
-       for (uint16 h = height; h > 0; h--) {
-           if (result_found_at_node_addr == 0) {
-               break;
-           }
-           if (!query_path_free_array[h]) {
-               trunk_node child;
-               trunk_node_get(spl->cc, pivot->addr, &child);
-               //! Problem here is that we will have to read all the nodes again,
-               //! but it is likely that they will be in the cache.
-               //! This acts like the "recursion"
-               trunk_node_unget(spl->cc, &temp_root);
-               temp_root = child;
-               continue;
-           }
-           uint16 pivot_no =
-                   trunk_find_pivot(spl, &temp_root, target, less_than_or_equal);
-           trunk_pivot_data *pivot = trunk_get_pivot_data(spl, &temp_root, pivot_no);
-           // TODO: check if we have enough space to add a P* pivot.
-           // TODO: check P* pivots also
-           if ((temp_root.addr == result_found_at_node_addr || pivot->addr == result_found_at_node_addr)) {
-               //! This means that we already have a p* pivot to this node.
-               //! Do not do anything;
-               break;
-           } else {
-               bool32 found = FALSE;
-               for (int i = 0; i < temp_root.hdr->num_aux_pivots; i++) {
-                   if (temp_root.hdr->aux_pivot[i].node_addr == result_found_at_node_addr) {
-                       found = TRUE;
-                       break;
-                   }
-               }
-               if (!found) {
-                   //! add P* pivot, check for space
-                   //! Calculate space taken by fractional branches
-                   uint64 bytes_used_by_level[TRUNK_MAX_HEIGHT] = {0};
-                   trunk_node_space_use(spl, temp_root.addr, bytes_used_by_level);
-                   // todo check why memtable capacity is 0
-                   if (bytes_used_by_level[h] >=
-                       spl->cfg.max_branches_per_node * 24 * 1024 * 1024 &&
-                       temp_root.hdr->num_aux_pivots > 56) {
-                       // dont do anything
-                   } else {
-
-		       if (aux_pivot.range_start.kind == NEGATIVE_INFINITY && aux_pivot.range_end.kind == POSITIVE_INFINITY) {
-			 platform_default_log("Bounds +/- inf\n");
-			 break;
-		       }
-                       uint8 num_elements = (temp_root.hdr->num_aux_pivots + 1);
-                       trunk_node_claim(spl->cc, &temp_root);
-                       trunk_node_lock(spl->cc, &temp_root);
-                       temp_root.hdr->aux_pivot[num_elements - 1] = aux_pivot;
-                       temp_root.hdr->num_aux_pivots = num_elements;
-                       trunk_node_unlock(spl->cc, &temp_root);
-                       trunk_node_unclaim(spl->cc, &temp_root);
-                       if (spl->cfg.use_stats) {
-                           threadid tid = platform_get_tid();
-                           spl->stats->number_of_p_stars++;
-                       }
-                       break;
-                   }
-               }
-
-           }
-           //! If no space, go one level down.
-           trunk_node child;
-           trunk_node_get(spl->cc, pivot->addr, &child);
-           //! Problem here is that we will have to read all the nodes again,
-           //! but it is likely that they will be in the cache.
-           //! This acts like the "recursion"
-           trunk_node_unget(spl->cc, &temp_root);
-           temp_root = child;
-       }
-       trunk_node_unget(spl->cc, &temp_root);
+      trunk_node p_star_parent;
+      if (result_found_at_node_addr != 0) {
+          if (free_from_node_addr != 0) {
+              if (free_from_node_addr == spl->root_addr) {
+                  trunk_root_get(spl, &p_star_parent);
+              } else {
+                  trunk_node_get(spl->cc, free_from_node_addr, &p_star_parent);
+              }
+          }
+          if (p_star_parent.addr == result_found_at_node_addr) {
+              trunk_node_unget(spl->cc, &p_star_parent);
+          } else {
+              uint16 pivot_no =
+                      trunk_find_pivot(spl, &p_star_parent, target, less_than_or_equal);
+              trunk_pivot_data *pivot = trunk_get_pivot_data(spl, &p_star_parent, pivot_no);
+              if (pivot->addr != result_found_at_node_addr) {
+                  bool32 found = FALSE;
+                  for (int i = 0; i < p_star_parent.hdr->num_aux_pivots; i++) {
+                      if (p_star_parent.hdr->aux_pivot[i].node_addr == result_found_at_node_addr) {
+                          found = TRUE;
+                          break;
+                      }
+                  }
+                  if (!found) {
+                      if (aux_pivot.range_start.kind != NEGATIVE_INFINITY || aux_pivot.range_end.kind != POSITIVE_INFINITY) {
+                          uint8 num_elements = (p_star_parent.hdr->num_aux_pivots + 1);
+                          trunk_node_claim(spl->cc, &p_star_parent);
+                          trunk_node_lock(spl->cc, &p_star_parent);
+                          p_star_parent.hdr->aux_pivot[num_elements - 1] = aux_pivot;
+                          p_star_parent.hdr->num_aux_pivots = num_elements;
+                          trunk_node_unlock(spl->cc, &p_star_parent);
+                          trunk_node_unclaim(spl->cc, &p_star_parent);
+                          if (spl->cfg.use_stats) {
+                              spl->stats->number_of_p_stars++;
+                          }
+                      }
+                  }
+              }
+              trunk_node_unget(spl->cc, &p_star_parent);
+          }
+      }
    }
    if (spl->cfg.use_stats) {
       threadid tid = platform_get_tid();
