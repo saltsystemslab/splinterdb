@@ -147,6 +147,8 @@ typedef struct trunk_stats {
 
    uint64 lookups_found;
    uint64 lookups_not_found;
+   uint64 p_star_lookups_found;
+   uint64 p_star_lookup_not_found;
    uint64 filter_lookups[TRUNK_MAX_HEIGHT];
    uint64 branch_lookups[TRUNK_MAX_HEIGHT];
    uint64 filter_false_positives[TRUNK_MAX_HEIGHT];

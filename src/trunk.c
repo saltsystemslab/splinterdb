@@ -553,7 +553,7 @@ typedef struct ONDISK trunk_hdr {
    trunk_bundle    bundle[TRUNK_MAX_BUNDLES];
    trunk_subbundle subbundle[TRUNK_MAX_SUBBUNDLES];
    routing_filter  sb_filter[TRUNK_MAX_SUBBUNDLE_FILTERS];
-   trunk_aux_pivot aux_pivot[17];
+   trunk_aux_pivot aux_pivot[56];
    uint16 num_aux_pivots;
 } trunk_hdr;
 
@@ -7056,6 +7056,7 @@ trunk_node_space_use(trunk_handle *spl, uint64 addr, void *arg)
 platform_status
 trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result)
 {
+	platform_default_log("Query for key %s\n", (char *)slice_data(target.user_slice));
    // look in memtables
 
    // 1. get read lock on lookup lock
@@ -7087,19 +7088,20 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result)
    key lower_bound = NEGATIVE_INFINITY_KEY;
    key upper_bound = POSITIVE_INFINITY_KEY;
    trunk_aux_pivot aux_pivot;
-   bool32 query_path_free = TRUE;
    uint64 free_from_node_addr = 0;
    uint16 hops = 1;
    uint64 result_found_at_node_addr = 0;
 //   bool query_path_free = FALSE;
    // release memtable lookup lock
+   bool use_p_star = FALSE;
    memtable_end_lookup(spl->mt_ctxt);
    // look in index nodes
    uint16 height = trunk_node_height(&node);
-   for (uint16 h = height; h > 0; h = h - hops) {
+   for (int16 h = height; h > 0; h = h - hops) {
        //! Check if there are P* pointers in the current node
        trunk_node child;
 
+       //platform_default_log("Node address : %lu at height %d\n", node.addr, h);
       uint16 pivot_no =
          trunk_find_pivot(spl, &node, target, less_than_or_equal);
       debug_assert(pivot_no < trunk_num_children(spl, &node));
@@ -7149,18 +7151,19 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result)
            }
            if (idx != -1) {
                hops = node.hdr->aux_pivot[idx].num_hops;
-               if (spl->cfg.use_stats) {
-                   threadid tid = platform_get_tid();
-                   spl->stats->p_star_query++;
-               }
+	       if (spl->cfg.use_stats) {
+		 threadid tid = platform_get_tid();
+		 spl->stats[tid].p_star_query++;
+	       }
 #if SPLINTER_DEBUG
 //	       platform_default_log("Using P* pointer\n");
 #endif
                //printf("Using p* pointer\n");
+	       //platform_default_log("Using P* pointer to node %lu with hops %d\n", node.hdr->aux_pivot[idx].node_addr, hops);
                trunk_node_get(spl->cc, node.hdr->aux_pivot[idx].node_addr, &child);
                trunk_node_unget(spl->cc, &node);
                node = child;
-               result_found_at_node_addr = node.addr;
+	       use_p_star = TRUE;
                continue;
            }
        } else {
@@ -7169,12 +7172,10 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result)
       
        if (trunk_pivot_needs_flush(spl, &node, pdata, 0)) {
            free_from_node_addr = 0;
-           query_path_free = FALSE;
        } else if (!trunk_pivot_needs_flush(spl, &node, pdata, 0) && free_from_node_addr != 0) {
           // do nothing
        } else {
            free_from_node_addr = node.addr;
-           query_path_free = TRUE;
        }
        trunk_node_get(spl->cc, pdata->addr, &child);
        if (pivot_no == node.hdr->num_pivot_keys - 1) {
@@ -7231,7 +7232,6 @@ found_final_answer_early:
               } else {
                   trunk_node_get(spl->cc, free_from_node_addr, &p_star_parent);
               }
-          }
           if (p_star_parent.addr == result_found_at_node_addr) {
               trunk_node_unget(spl->cc, &p_star_parent);
           } else {
@@ -7248,20 +7248,25 @@ found_final_answer_early:
                   }
                   if (!found) {
                       if (aux_pivot.range_start.kind != NEGATIVE_INFINITY || aux_pivot.range_end.kind != POSITIVE_INFINITY) {
-                          uint8 num_elements = (p_star_parent.hdr->num_aux_pivots + 1);
+                          uint8 num_elements = (p_star_parent.hdr->num_aux_pivots + 1) % 17;
                           trunk_node_claim(spl->cc, &p_star_parent);
                           trunk_node_lock(spl->cc, &p_star_parent);
                           p_star_parent.hdr->aux_pivot[num_elements - 1] = aux_pivot;
                           p_star_parent.hdr->num_aux_pivots = num_elements;
                           trunk_node_unlock(spl->cc, &p_star_parent);
                           trunk_node_unclaim(spl->cc, &p_star_parent);
-                          if (spl->cfg.use_stats) {
-                              spl->stats->number_of_p_stars++;
-                          }
+		//	  platform_default_log("Added P* pointer with bounds %s -> %s\n", (char *) slice_data(aux_pivot.range_start.user_slice), (char *) slice_data(aux_pivot.range_end.user_slice));
+		//	  platform_default_log("Number of pivot keys after adding P* pointer = %d\n", p_star_parent.hdr->num_pivot_keys);
+                          if (spl->cfg.use_stats) {    
+			    threadid tid = platform_get_tid();
+			    spl->stats[tid].number_of_p_stars++;
+			  }
+
                       }
                   }
               }
               trunk_node_unget(spl->cc, &p_star_parent);
+	  }
           }
       }
    }
@@ -7269,8 +7274,13 @@ found_final_answer_early:
       threadid tid = platform_get_tid();
       if (!merge_accumulator_is_null(result)) {
          spl->stats[tid].lookups_found++;
+	 if (use_p_star) {
+          spl->stats[tid].p_star_lookups_found++;
+	 }
       } else {
          spl->stats[tid].lookups_not_found++;
+	 if (use_p_star)
+		 spl->stats[tid].p_star_lookup_not_found++;
       }
    }
 
@@ -9185,6 +9195,7 @@ trunk_print_insertion_stats(platform_log_handle *log_handle, trunk_handle *spl)
 
       global->single_leaf_splits          += spl->stats[thr_i].single_leaf_splits;
       global->single_leaf_tuples          += spl->stats[thr_i].single_leaf_tuples;
+      global->number_of_p_stars += spl->stats[thr_i].number_of_p_stars;
       if (spl->stats[thr_i].single_leaf_max_tuples >
             global->single_leaf_max_tuples) {
          global->single_leaf_max_tuples = spl->stats[thr_i].single_leaf_max_tuples;
@@ -9401,7 +9412,11 @@ trunk_print_lookup_stats(platform_log_handle *log_handle, trunk_handle *spl)
          global->filter_negatives[h]       += spl->stats[thr_i].filter_negatives[h];
       }
       global->lookups_found     += spl->stats[thr_i].lookups_found;
+      global->p_star_query += spl->stats[thr_i].p_star_query;
+
       global->lookups_not_found += spl->stats[thr_i].lookups_not_found;
+      global->p_star_lookups_found += spl->stats[thr_i].p_star_lookups_found;
+      global->p_star_lookup_not_found += spl->stats[thr_i].p_star_lookup_not_found;
    }
    lookups = global->lookups_found + global->lookups_not_found;
 
@@ -9412,6 +9427,8 @@ trunk_print_lookup_stats(platform_log_handle *log_handle, trunk_handle *spl)
    platform_log(log_handle, "| queries by p star: %lu\n", global->p_star_query);
    platform_log(log_handle, "| lookups found:     %lu\n", global->lookups_found);
    platform_log(log_handle, "| lookups not found: %lu\n", global->lookups_not_found);
+   platform_log(log_handle, "| p star lookups found: %lu\n", global->p_star_lookups_found);
+   platform_log(log_handle, "| p star lookups not found: %lu\n", global->p_star_lookup_not_found);
    platform_log(log_handle, "-----------------------------------------------------------------------------------\n");
    platform_log(log_handle, "\n");
 
