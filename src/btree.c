@@ -2126,6 +2126,27 @@ btree_lookup_with_ref(cache        *cc,        // IN
    }
 }
 
+void
+btree_check_num_keys_in_root_pivot_range(cache *cc,
+                                          btree_config *cfg,
+                                          uint64 root_addr,
+                                          page_type type,
+                                          key lower_bound,
+                                          key upper_bound,
+                                          bool32 *found) {
+    btree_node node;
+    btree_node_get(cc, cfg, &node, PAGE_TYPE_BRANCH);
+    for (uint8 pivot_no = 0; pivot_no < node.hdr->num_entries; pivot_no = pivot_no + 1) {
+        leaf_entry *entry = btree_get_leaf_entry(cfg, node.hdr, pivot_no);
+        key entry_key = leaf_entry_key(entry);
+        if (slice_lex_cmp(entry_key.user_slice, lower_bound.user_slice) >= 0
+        && slice_lex_cmp(entry_key.user_slice, upper_bound.user_slice) < 0) {
+            *found = TRUE;
+            break;
+        }
+    }
+}
+
 platform_status
 btree_lookup(cache             *cc,        // IN
              btree_config      *cfg,       // IN

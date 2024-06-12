@@ -61,6 +61,7 @@ static const int64 latency_histo_buckets[LATENCYHISTO_SIZE] = {
 #define TRUNK_MAX_BUNDLES           (12)
 #define TRUNK_MAX_SUBBUNDLES        (24)
 #define TRUNK_MAX_SUBBUNDLE_FILTERS (24U)
+#define TRUNK_MAX_AUX_PIVOTS        (56)
 
 /*
  * For a "small" range query, you don't want to prefetch pages.
@@ -4665,7 +4666,7 @@ trunk_flush(trunk_handle     *spl,
    platform_status rc;
    uint64   wait_start, flush_start;
    threadid tid;
-   parent->hdr->num_aux_pivots = 0;
+   //parent->hdr->num_aux_pivots = 0;
    if (spl->cfg.use_stats) {
       tid        = platform_get_tid();
       wait_start = platform_get_timestamp();
@@ -4705,7 +4706,40 @@ trunk_flush(trunk_handle     *spl,
    trunk_compact_bundle_req *req = TYPED_ZALLOC(spl->heap_id, req);
    trunk_bundle             *bundle =
       trunk_flush_into_bundle(spl, parent, &new_child, pdata, req);
-   trunk_tuples_in_bundle(spl,
+   //! Remove P* pointers based on the range of keys being flushed.
+   if (parent->hdr->num_aux_pivots > 0) {
+       trunk_aux_pivot aux_pivot_copy[TRUNK_MAX_AUX_PIVOTS];
+       uint8 num_aux_pivots = 0;
+        uint8 aux_pivot_no = 0;
+        while (aux_pivot_no < parent->hdr->num_aux_pivots) {
+            trunk_aux_pivot aux = parent->hdr->aux_pivot[aux_pivot_no];
+            bool32 found = FALSE;
+            for (uint16 branch_no = pdata->start_branch;
+                 trunk_branch_is_whole(spl, parent, branch_no);
+                 branch_no = trunk_add_branch_number(spl, branch_no, 1)) {
+                trunk_branch *branch = trunk_get_branch(spl, parent, branch_no);
+                btree_check_num_keys_in_root_pivot_range(spl->cc,
+                                                         &spl->cfg.btree_cfg,
+                                                         branch->root_addr,
+                                                         PAGE_TYPE_BRANCH,
+                                                         aux.range_start,
+                                                         aux.range_end,
+                                                         &found);
+                if (found) {
+                    break; // Exit the inner loop if found
+                }
+            }
+            if (!found) {
+                aux_pivot_copy[num_aux_pivots++] = aux;
+            }
+            aux_pivot_copy[num_aux_pivots++] = aux;
+        }
+        memcpy(parent->hdr->aux_pivot, aux_pivot_copy, num_aux_pivots * sizeof(trunk_aux_pivot));
+        parent->hdr->num_aux_pivots = num_aux_pivots;
+    }
+
+
+    trunk_tuples_in_bundle(spl,
                          &new_child,
                           bundle,
                           req->input_pivot_tuple_count,
@@ -4739,7 +4773,7 @@ trunk_flush(trunk_handle     *spl,
 	 #if SPLINTER_DEBUG
 //	      platform_default_log("Splitting internal node at address %lu\n", new_child.addr);
 #endif
-         uint64 child_idx = trunk_pdata_to_pivot_index(spl, parent, pdata);
+         uint64  = trunk_pdata_to_pivot_index(spl, parent, pdata);
          trunk_split_index(spl, parent, &new_child, child_idx, req);
 
       *new_addr = new_child.addr;
@@ -8231,6 +8265,7 @@ void
 trunk_unmount(trunk_handle **spl_in)
 {
    trunk_handle *spl = *spl_in;
+   //! TODO check contents of root
    srq_deinit(&spl->srq);
    trunk_prepare_for_shutdown(spl);
    trunk_set_super_block(spl, FALSE, TRUE, FALSE);

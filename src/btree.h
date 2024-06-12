@@ -269,6 +269,7 @@ btree_unblock_dec_ref(cache *cc, btree_config *cfg, uint64 root_addr);
 
 void
 btree_node_unget(cache *cc, const btree_config *cfg, btree_node *node);
+
 platform_status
 btree_lookup(cache             *cc,
              btree_config      *cfg,
@@ -443,6 +444,15 @@ void
 btree_config_init(btree_config *btree_cfg,
                   cache_config *cache_cfg,
                   data_config  *data_cfg);
+
+void
+btree_check_num_keys_in_root_pivot_range(cache *cc,
+                                          btree_config *cfg,
+                                          uint64 root_addr,
+                                          page_type type,
+                                          key lower_bound,
+                                          key upper_bound,
+                                          bool32 *found);
 
 // robj: I propose making all the following functions private to
 // btree.c
