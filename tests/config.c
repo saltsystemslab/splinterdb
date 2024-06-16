@@ -17,7 +17,7 @@
 
 // Provide sufficient disk, cache and memtable capacity to get somewhat
 // realistic configuration for most tests.
-#define TEST_CONFIG_DEFAULT_DISK_SIZE_GB         300
+#define TEST_CONFIG_DEFAULT_DISK_SIZE_GB         200
 #define TEST_CONFIG_DEFAULT_CACHE_SIZE_GB        1
 #define TEST_CONFIG_DEFAULT_MEMTABLE_CAPACITY_MB 24
 #define TEST_CONFIG_DEFAULT_SHMEM_SIZE_GB        2
@@ -25,7 +25,7 @@
 // Setup reasonable BTree and branch tree configurations
 #define TEST_CONFIG_DEFAULT_FILTER_INDEX_SIZE     256
 #define TEST_CONFIG_DEFAULT_FANOUT                8
-#define TEST_CONFIG_DEFAULT_MAX_BRANCHES_PER_NODE 24
+#define TEST_CONFIG_DEFAULT_MAX_BRANCHES_PER_NODE 48
 
 // Deal with reasonable key / message sizes for tests
 // There are open issues in some tests for smaller key-sizes.

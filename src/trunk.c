@@ -7084,6 +7084,9 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result)
    trunk_node node;
    trunk_node temp;
    trunk_root_get(spl, &node);
+   bool32 query_path_free = TRUE;
+   bool32 use_p_star = FALSE;
+   uint64 free_from_node_addr = 0;
    key lower_bound = NEGATIVE_INFINITY_KEY;
    key upper_bound = POSITIVE_INFINITY_KEY;
    trunk_aux_pivot aux_pivot;
@@ -7094,8 +7097,8 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result)
    // release memtable lookup lock
    memtable_end_lookup(spl->mt_ctxt);
    // look in index nodes
-   uint16 height = trunk_node_height(&node);
-   for (uint16 h = height; h > 0; h = h - hops) {
+   int16 height = trunk_node_height(&node);
+   for (int16 h = height; h > 0; h = h - hops) {
        //! Check if there are P* pointers in the current node
        trunk_node child;
 
@@ -7148,15 +7151,15 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result)
            }
            if (idx != -1) {
                hops = node.hdr->aux_pivot[idx].num_hops;
-#if SPLINTER_DEBUG
-//	       platform_default_log("Using P* pointer\n");
-#endif
-               //printf("Using p* pointer\n");
-	       platform_default_log("Using P* pointer\n");
+               if (spl->cfg.use_stats) {
+                   threadid tid = platform_get_tid();
+                   spl->stats[tid].p_star_query++;
+               }
                trunk_node_get(spl->cc, node.hdr->aux_pivot[idx].node_addr, &child);
                trunk_node_unget(spl->cc, &node);
                node = child;
                result_found_at_node_addr = node.addr;
+               use_p_star = TRUE;
                continue;
            }
        } else {
@@ -7165,49 +7168,38 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result)
       
 	   uint64 new_addr = pdata->addr;
        if (trunk_pivot_needs_flush(spl, &node, pdata, 0)) {
+           free_from_node_addr = 0;
            uint64 prev_addr = node.addr;
            trunk_node_unget(spl->cc, &node);
-	   query_path_free = FALSE;
-       //    if (node.addr == spl->root_addr) {
-               //! Just lock the root node, no need to do anything else.
-//	       trunk_root_get(spl, &node);
-//               trunk_node_claim(spl->cc, &node);
-//               trunk_node_lock(spl->cc, &node);
-//           } else {
-//               trunk_root_get(spl, &temp);
-//               trunk_node_claim(spl->cc, &temp);
-#if SPLINTER_DEBUG
-	       //platform_default_log("Root node address %lu\n", temp.addr);
-#endif
-               // TODO claim this node
-//               trunk_node_get(spl->cc, prev_addr,  &node);
-//               trunk_node_claim(spl->cc, &node);
-//               trunk_node_lock(spl->cc, &node);
-//           }
-//           if (trunk_pivot_needs_flush(spl, &node, pdata, 0)) {
-#if SPLINTER_DEBUG
-//		   	platform_default_log("Flushing from node %lu to node %lu\n", node.addr, pdata->addr);
-		   	
-#endif
-		   //platform_default_log("Flushing\n");
-//              }
-//	  else query_path_free = FALSE;
-//           if (node.addr == spl->root_addr) {
-//               trunk_node_unclaim(spl->cc, &node);
-//               trunk_node_unlock(spl->cc, &node);
-//           } else {
-//               trunk_node_unlock(spl->cc, &node);
-//               trunk_node_unclaim(spl->cc, &node);
-#if SPLINTER_DEBUG
-	       //platform_default_log("Root node address %lu\n", temp.addr);
-#endif
-//               trunk_node_unclaim(spl->cc, &temp);
-//               trunk_node_unget(spl->cc, &temp);
-//           }
-       }// else query_path_free = FALSE;
-       //! Need to recompute in case a node split.
-       //pivot_no = trunk_find_pivot(spl, &node, target, less_than_or_equal);
-       //pdata = trunk_get_pivot_data(spl, &node, pivot_no);
+	      query_path_free = FALSE;
+          if (node.addr == spl->root_addr) {
+	       trunk_root_get(spl, &node);
+               trunk_node_claim(spl->cc, &node);
+               trunk_node_lock(spl->cc, &node);
+           } else {
+               trunk_root_get(spl, &temp);
+               trunk_node_claim(spl->cc, &temp);
+               trunk_node_get(spl->cc, prev_addr,  &node);
+               trunk_node_claim(spl->cc, &node);
+               trunk_node_lock(spl->cc, &node);
+           }
+           if (trunk_pivot_needs_flush(spl, &node, pdata, 0)) {
+               trunk_flush(spl, &node, pdata, new_addr);
+           }
+           if (node.addr == spl->root_addr) {
+               trunk_node_unclaim(spl->cc, &node);
+               trunk_node_unlock(spl->cc, &node);
+           } else {
+               trunk_node_unlock(spl->cc, &node);
+               trunk_node_unclaim(spl->cc, &node);
+               trunk_node_unclaim(spl->cc, &temp);
+               trunk_node_unget(spl->cc, &temp);
+           }
+       } else if(!trunk_pivot_needs_flush(spl, &node, pdata, 0) && free_from_node_addr != 0) {
+           //! do nothing
+       } else {
+           free_from_node_addr = node.addr;
+       }
        trunk_node_get(spl->cc, pdata->addr, &child);
        if (pivot_no == node.hdr->num_pivot_keys - 1) {
            //! Means that this is the last pivot in this node. So upper bound
@@ -7254,78 +7246,63 @@ found_final_answer_early:
       // release memtable lookup lock
       memtable_end_lookup(spl->mt_ctxt);
    } else {
-      trunk_node_unget(spl->cc, &node);
-       trunk_node temp_root;
-       trunk_root_get(spl, &temp_root);
-       //! Iterate through the query path array and check if we have a pointer to the
-       //! node at which the result was found.
-       for (uint16 h = height; h > 0; h--) {
-           if (result_found_at_node_addr == 0 || !query_path_free) {
-               break;
-           }
-           uint16 pivot_no =
-                   trunk_find_pivot(spl, &temp_root, target, less_than_or_equal);
-           trunk_pivot_data *pivot = trunk_get_pivot_data(spl, &temp_root, pivot_no);
-           // TODO: check if we have enough space to add a P* pivot.
-           // TODO: check P* pivots also
-           if ((temp_root.addr == result_found_at_node_addr || pivot->addr == result_found_at_node_addr) || temp_root.hdr->num_aux_pivots >= 8) {
-               //! This means that we already have a p* pivot to this node.
-               //! Do not do anything;
-
-               break;
-           } else {
-               bool32 found = FALSE;
-               for (int i = 0; i < temp_root.hdr->num_aux_pivots; i++) {
-                   if (temp_root.hdr->aux_pivot[i].node_addr == result_found_at_node_addr) {
-                       found = TRUE;
-                       break;
+       trunk_node_unget(spl->cc, &node);
+       trunk_node p_star_parent;
+       if (result_found_at_node_addr != 0) {
+           if (free_from_node_addr != 0) {
+               if (free_from_node_addr == spl->root_addr) {
+                   trunk_root_get(spl, &p_star_parent);
+               } else {
+                   trunk_node_get(spl->cc, free_from_node_addr, &p_star_parent);
+               }
+               if (p_star_parent.addr == result_found_at_node_addr) {
+                   trunk_node_unget(spl->cc, &p_star_parent);
+               } else {
+                   uint16 pivot_no =
+                           trunk_find_pivot(spl, &p_star_parent, target, less_than_or_equal);
+                   trunk_pivot_data *pivot = trunk_get_pivot_data(spl, &p_star_parent, pivot_no);
+                   if (pivot->addr != result_found_at_node_addr) {
+                       bool32 found = FALSE;
+                       for (int i = 0; i < p_star_parent.hdr->num_aux_pivots; i++) {
+                           if (p_star_parent.hdr->aux_pivot[i].node_addr == result_found_at_node_addr) {
+                               found = TRUE;
+                               break;
+                           }
+                       }
+                       if (!found) {
+                           if (aux_pivot.range_start.kind != NEGATIVE_INFINITY ||
+                               aux_pivot.range_end.kind != POSITIVE_INFINITY) {
+                               uint8 num_elements = (p_star_parent.hdr->num_aux_pivots + 1) % 17;
+                               trunk_node_claim(spl->cc, &p_star_parent);
+                               trunk_node_lock(spl->cc, &p_star_parent);
+                               p_star_parent.hdr->aux_pivot[num_elements - 1] = aux_pivot;
+                               p_star_parent.hdr->num_aux_pivots = num_elements;
+                               trunk_node_unlock(spl->cc, &p_star_parent);
+                               trunk_node_unclaim(spl->cc, &p_star_parent);
+                               if (spl->cfg.use_stats) {
+                                   threadid tid = platform_get_tid();
+                                   spl->stats[tid].number_of_p_stars++;
+                               }
+                           }
+                       }
                    }
                }
-               if (!found) {
-                   //! add P* pivot, check for space
-                   //! Calculate space taken by fractional branches
-                   uint64 bytes_used_by_level[TRUNK_MAX_HEIGHT] = {0};
-                   trunk_node_space_use(spl, temp_root.addr, bytes_used_by_level);
-                   // todo check why memtable capacity is 0
-                   if (bytes_used_by_level[h] >=
-                       spl->cfg.max_branches_per_node * 24 * 1024 * 1024 &&
-                       temp_root.hdr->num_aux_pivots > 56) {
-                       // dont do anything
-                   } else {
-
-		       if (aux_pivot.range_start.kind == NEGATIVE_INFINITY && aux_pivot.range_end.kind == POSITIVE_INFINITY) {
-			 platform_default_log("Bounds +/- inf\n");
-			 break;
-		       }
-                       uint8 num_elements = (temp_root.hdr->num_aux_pivots + 1);
-                       trunk_node_claim(spl->cc, &temp_root);
-                       trunk_node_lock(spl->cc, &temp_root);
-                       temp_root.hdr->aux_pivot[num_elements - 1] = aux_pivot;
-                       temp_root.hdr->num_aux_pivots = num_elements;
-                       trunk_node_unlock(spl->cc, &temp_root);
-                       trunk_node_unclaim(spl->cc, &temp_root);
-                       break;
-                   }
-               }
-
+               trunk_node_unget(spl->cc, &p_star_parent);
            }
-           //! If no space, go one level down.
-           trunk_node child;
-           trunk_node_get(spl->cc, pivot->addr, &child);
-           //! Problem here is that we will have to read all the nodes again,
-           //! but it is likely that they will be in the cache.
-           //! This acts like the "recursion"
-           trunk_node_unget(spl->cc, &temp_root);
-           temp_root = child;
        }
-       trunk_node_unget(spl->cc, &temp_root);
    }
    if (spl->cfg.use_stats) {
       threadid tid = platform_get_tid();
       if (!merge_accumulator_is_null(result)) {
          spl->stats[tid].lookups_found++;
+          if (use_p_star) {
+              spl->stats[tid].p_star_lookups_found++;
+          }
       } else {
          spl->stats[tid].lookups_not_found++;
+         if (use_p_star) {
+              spl->stats[tid].p_star_lookup_not_found++;
+         }
       }
    }
 
@@ -9454,8 +9431,12 @@ trunk_print_lookup_stats(platform_log_handle *log_handle, trunk_handle *spl)
          global->filter_false_positives[h] += spl->stats[thr_i].filter_false_positives[h];
          global->filter_negatives[h]       += spl->stats[thr_i].filter_negatives[h];
       }
+      global->p_star_query += spl->stats[thr_i].p_star_query;
       global->lookups_found     += spl->stats[thr_i].lookups_found;
       global->lookups_not_found += spl->stats[thr_i].lookups_not_found;
+      global->p_star_lookups_found += spl->stats[thr_i].p_star_lookups_found;
+      global->p_star_lookup_not_found += spl->stats[thr_i].p_star_lookup_not_found;
+      global->number_of_p_stars += spl->stats[thr_i].number_of_p_stars;
    }
    lookups = global->lookups_found + global->lookups_not_found;
 

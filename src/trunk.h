@@ -81,7 +81,10 @@ typedef struct trunk_stats {
    uint64 insertions;
    uint64 updates;
    uint64 deletions;
-
+   uint64 number_of_p_stars;
+   uint64 p_star_query;
+   uint64 p_star_lookups_found;
+   uint64 p_star_lookup_not_found;
    platform_histo_handle insert_latency_histo;
    platform_histo_handle update_latency_histo;
    platform_histo_handle delete_latency_histo;
