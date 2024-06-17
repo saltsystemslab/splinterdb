@@ -4728,17 +4728,13 @@ trunk_flush(trunk_handle     *spl,
       if (trunk_node_is_leaf(&new_child)) {
          platform_free(spl->heap_id, req);
          uint16 child_idx = trunk_pdata_to_pivot_index(spl, parent, pdata);
-#if SPLINTER_DEBUG
 	 platform_default_log("Splitting leaf node %lu\n", new_child.addr);
-#endif
          trunk_split_leaf(spl, parent, &new_child, child_idx);
 
       *new_addr = new_child.addr;
         return STATUS_OK;
       } else {
-	 #if SPLINTER_DEBUG
-//	      platform_default_log("Splitting internal node at address %lu\n", new_child.addr);
-#endif
+	      platform_default_log("Splitting internal node at address %lu\n", new_child.addr);
          uint64 child_idx = trunk_pdata_to_pivot_index(spl, parent, pdata);
          trunk_split_index(spl, parent, &new_child, child_idx, req);
 
@@ -7084,21 +7080,19 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result)
    trunk_node node;
    trunk_node temp;
    trunk_root_get(spl, &node);
-   bool32 query_path_free = TRUE;
    bool32 use_p_star = FALSE;
    uint64 free_from_node_addr = 0;
    key lower_bound = NEGATIVE_INFINITY_KEY;
    key upper_bound = POSITIVE_INFINITY_KEY;
    trunk_aux_pivot aux_pivot;
-   bool32 query_path_free = TRUE;
    uint16 hops = 1;
    uint64 result_found_at_node_addr = 0;
 //   bool query_path_free = FALSE;
    // release memtable lookup lock
    memtable_end_lookup(spl->mt_ctxt);
    // look in index nodes
-   int16 height = trunk_node_height(&node);
-   for (int16 h = height; h > 0; h = h - hops) {
+   uint16 height = trunk_node_height(&node);
+   for (uint16 h = height; h > 0; h = h - hops) {
        //! Check if there are P* pointers in the current node
        trunk_node child;
 
@@ -7156,6 +7150,7 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result)
                    spl->stats[tid].p_star_query++;
                }
                trunk_node_get(spl->cc, node.hdr->aux_pivot[idx].node_addr, &child);
+	       platform_default_log("Using P* pointer to jump to node %lu with hops %d\n", child.addr, hops);
                trunk_node_unget(spl->cc, &node);
                node = child;
                result_found_at_node_addr = node.addr;
@@ -7171,7 +7166,6 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result)
            free_from_node_addr = 0;
            uint64 prev_addr = node.addr;
            trunk_node_unget(spl->cc, &node);
-	      query_path_free = FALSE;
           if (node.addr == spl->root_addr) {
 	       trunk_root_get(spl, &node);
                trunk_node_claim(spl->cc, &node);
@@ -7184,7 +7178,8 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result)
                trunk_node_lock(spl->cc, &node);
            }
            if (trunk_pivot_needs_flush(spl, &node, pdata, 0)) {
-               trunk_flush(spl, &node, pdata, new_addr);
+	       platform_default_log("Flushing from node %lu to node %lu\n", node.addr, pdata->addr);
+               trunk_flush(spl, &node, pdata, TRUE, &new_addr);
            }
            if (node.addr == spl->root_addr) {
                trunk_node_unclaim(spl->cc, &node);
@@ -7251,11 +7246,14 @@ found_final_answer_early:
        if (result_found_at_node_addr != 0) {
            if (free_from_node_addr != 0) {
                if (free_from_node_addr == spl->root_addr) {
-                   trunk_root_get(spl, &p_star_parent);
+		   platform_default_log("Query path free from root node\n");    
                } else {
-                   trunk_node_get(spl->cc, free_from_node_addr, &p_star_parent);
+		   platform_default_log("Query path free from node %lu\n", free_from_node_addr);    
                }
+
+               trunk_node_get(spl->cc, free_from_node_addr, &p_star_parent);
                if (p_star_parent.addr == result_found_at_node_addr) {
+		   platform_default_log("Ungetting node since we already have a pointer to it\n");    
                    trunk_node_unget(spl->cc, &p_star_parent);
                } else {
                    uint16 pivot_no =
@@ -7273,9 +7271,17 @@ found_final_answer_early:
                            if (aux_pivot.range_start.kind != NEGATIVE_INFINITY ||
                                aux_pivot.range_end.kind != POSITIVE_INFINITY) {
                                uint8 num_elements = (p_star_parent.hdr->num_aux_pivots + 1) % 17;
+			       trunk_node_unget(spl->cc, &p_star_parent);
+                               if (free_from_node_addr == spl->root_addr) {
+		                 platform_default_log("Query path free from root node\n");    
+                               } else {
+		                 platform_default_log("Query path free from node %lu\n", free_from_node_addr);    
+                               }
+                               trunk_node_get(spl->cc, free_from_node_addr, &p_star_parent);
                                trunk_node_claim(spl->cc, &p_star_parent);
                                trunk_node_lock(spl->cc, &p_star_parent);
                                p_star_parent.hdr->aux_pivot[num_elements - 1] = aux_pivot;
+			       //! TODO this is wrong
                                p_star_parent.hdr->num_aux_pivots = num_elements;
                                trunk_node_unlock(spl->cc, &p_star_parent);
                                trunk_node_unclaim(spl->cc, &p_star_parent);
@@ -7286,8 +7292,9 @@ found_final_answer_early:
                            }
                        }
                    }
-               }
+
                trunk_node_unget(spl->cc, &p_star_parent);
+               }
            }
        }
    }
@@ -9442,10 +9449,14 @@ trunk_print_lookup_stats(platform_log_handle *log_handle, trunk_handle *spl)
 
    platform_log(log_handle, "Overall Statistics\n");
    platform_log(log_handle, "-----------------------------------------------------------------------------------\n");
-   platform_log(log_handle, "| height:            %u\n", height);
-   platform_log(log_handle, "| lookups:           %lu\n", lookups);
-   platform_log(log_handle, "| lookups found:     %lu\n", global->lookups_found);
-   platform_log(log_handle, "| lookups not found: %lu\n", global->lookups_not_found);
+   platform_log(log_handle, "| height:                   %u\n", height);
+   platform_log(log_handle, "| lookups:                  %lu\n", lookups);
+   platform_log(log_handle, "| lookups found:            %lu\n", global->lookups_found);
+   platform_log(log_handle, "| lookups not found:        %lu\n", global->lookups_not_found);
+   platform_log(log_handle, "| p star lookups:           %lu\n", global->p_star_query);
+   platform_log(log_handle, "| p star lookups found:     %lu\n", global->p_star_lookups_found);
+   platform_log(log_handle, "| p star lookups not found: %lu\n", global->p_star_lookup_not_found);
+   platform_log(log_handle, "| number of p stars:        %lu\n", global->number_of_p_stars);
    platform_log(log_handle, "-----------------------------------------------------------------------------------\n");
    platform_log(log_handle, "\n");
 
