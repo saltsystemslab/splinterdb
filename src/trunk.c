@@ -511,8 +511,8 @@ typedef struct ONDISK trunk_bundle {
 } trunk_bundle;
 
 typedef struct ONDISK trunk_aux_pivot {
-    key range_start;
-    key range_end;
+    uint64 range_start;
+    uint64 range_end;
     uint64 node_addr;
     uint64 num_hops;
 } trunk_aux_pivot;
@@ -7060,7 +7060,7 @@ trunk_lookup(trunk_handle *spl, key target, merge_accumulator *result)
    //                also handles switch to READY ^^^^^
 
    merge_accumulator_set_to_null(result);
-platform_default_log("Query for key %s\n", (char *)slice_data(target.user_slice));
+//platform_default_log("Query for key %s\n", (char *)slice_data(target.user_slice));
    memtable_begin_lookup(spl->mt_ctxt);
    bool32 found_in_memtable = FALSE;
    uint64 mt_gen_start      = memtable_generation(spl->mt_ctxt);
@@ -7076,14 +7076,18 @@ platform_default_log("Query for key %s\n", (char *)slice_data(target.user_slice)
          goto found_final_answer_early;
       }
    }
+debug_only char * target_key = (char *) slice_data(target.user_slice);
 
+		   if (strcmp(target_key, "1395116300661442457") == 0) {
+			   platform_default_log("Key\n");
+		   }
    trunk_node node;
    trunk_node temp;
    trunk_root_get(spl, &node);
    bool32 use_p_star = FALSE;
    uint64 free_from_node_addr = 0;
-   key lower_bound = NEGATIVE_INFINITY_KEY;
-   key upper_bound = POSITIVE_INFINITY_KEY;
+   uint64_t lower_bound = 0;
+   uint64_t upper_bound = UINT64_MAX;
    trunk_aux_pivot aux_pivot;
    uint16 hops = 1;
    uint64 result_found_at_node_addr = 0;
@@ -7091,8 +7095,9 @@ platform_default_log("Query for key %s\n", (char *)slice_data(target.user_slice)
    // release memtable lookup lock
    memtable_end_lookup(spl->mt_ctxt);
    // look in index nodes
-   uint16 height = trunk_node_height(&node);
-   for (uint16 h = height; h > 0; h = h - hops) {
+   char * endptr;
+   int16 height = trunk_node_height(&node);
+   for (int16 h = height; h > 0; h = h - hops) {
        //! Check if there are P* pointers in the current node
        trunk_node child;
       uint16 pivot_no =
@@ -7100,11 +7105,13 @@ platform_default_log("Query for key %s\n", (char *)slice_data(target.user_slice)
       debug_assert(pivot_no < trunk_num_children(spl, &node));
       trunk_pivot_data *pdata = trunk_get_pivot_data(spl, &node, pivot_no);
        key pivot_start_range = ondisk_key_to_key(&pdata->pivot);
+       if (pivot_no == 0)
+	       platform_default_log("Key %s\n", (char *) target.user_slice.data);
       bool32            should_continue =
          trunk_pivot_lookup(spl, &node, pdata, target, result);
       if (!should_continue) {
-          aux_pivot.range_start = lower_bound;
-	            aux_pivot.range_end = upper_bound;
+	      aux_pivot.range_start = strtoull((char *)lower_bound.user_slice.data, &endptr, 10);
+aux_pivot.range_end = strtoull((char *)upper_bound.user_slice.data, &endptr, 10);
           aux_pivot.node_addr = node.addr;
           aux_pivot.num_hops = height - h;
           result_found_at_node_addr = node.addr;
@@ -7112,10 +7119,10 @@ platform_default_log("Query for key %s\n", (char *)slice_data(target.user_slice)
       }
        if (node.hdr->num_aux_pivots != 0) {
            //! see if target key falls in this range
-           key start, end;
+           uint64_t start, end;
+
            int idx = -1;
            for (int i = 0; i < node.hdr->num_aux_pivots; i++) {
-		   debug_only char * target_key = (char *) slice_data(target.user_slice);
 		   if (strcmp(target_key, "4535871784042367184") == 0) {
 			   platform_default_log("Key\n");
 		   }
@@ -7129,6 +7136,10 @@ platform_default_log("Query for key %s\n", (char *)slice_data(target.user_slice)
 		   }
 
 		   if (strcmp(target_key, "7945161852741912855") == 0) {
+			   platform_default_log("Key\n");
+		   }
+
+		   if (strcmp(target_key, "201763308439538123") == 0) {
 			   platform_default_log("Key\n");
 		   }
                start = node.hdr->aux_pivot[i].range_start;
@@ -7257,6 +7268,10 @@ platform_default_log("Query for key %s\n", (char *)slice_data(target.user_slice)
        node = child;
    }
 
+		   //if (strcmp(target_key, "7945161852741912855") == 0) {
+		//	   trunk_root_get(spl, &temp);
+		   //}
+
    // look in leaf
    trunk_pivot_data *pdata = trunk_get_pivot_data(spl, &node, 0);
 #if SPLINTER_DEBUG
@@ -7268,15 +7283,25 @@ platform_default_log("Query for key %s\n", (char *)slice_data(target.user_slice)
 #endif
       bool32         should_continue =
       trunk_pivot_lookup(spl, &node, pdata, target, result);
+
+		   //if (strcmp(target_key, "7945161852741912855") == 0) {
+		//	   trunk_node_unget(spl->cc, &temp);
+		   //}
    if (!should_continue) {
-	   aux_pivot.range_start = lower_bound;
-	             aux_pivot.range_end = upper_bound;
+
+aux_pivot.range_end = strtoull((char *)upper_bound.user_slice.data, &endptr, 10);
+aux_pivot.range_end = strtoull((char *)upper_bound.user_slice.data, &endptr, 10);
        aux_pivot.node_addr = node.addr;
        aux_pivot.num_hops = height;
        result_found_at_node_addr = node.addr;
        goto found_final_answer_early;
    }
 
+
+		   if (strcmp(target_key, "7945161852741912855") == 0) {
+			   trunk_root_get(spl, &temp);
+			   trunk_node_unget(spl->cc, &temp);
+		   }
    debug_assert(merge_accumulator_is_null(result)
                 || merge_accumulator_message_class(result)
                       == MESSAGE_TYPE_UPDATE);
@@ -7290,18 +7315,23 @@ found_final_answer_early:
       memtable_end_lookup(spl->mt_ctxt);
    } else {
        trunk_node_unget(spl->cc, &node);
+
+		   if (strcmp(target_key, "7945161852741912855") == 0) {
+			   trunk_root_get(spl, &temp);
+			   trunk_node_unget(spl->cc, &temp);
+		   }
        trunk_node p_star_parent;
        if (result_found_at_node_addr != 0) {
            if (free_from_node_addr != 0) {
                if (free_from_node_addr == spl->root_addr) {
-		   platform_default_log("Query path free from root node\n");    
+//		   platform_default_log("Query path free from root node\n");    
                } else {
-		   platform_default_log("Query path free from node %lu\n", free_from_node_addr);    
+//		   platform_default_log("Query path free from node %lu\n", free_from_node_addr);    
                }
 
                trunk_node_get(spl->cc, free_from_node_addr, &p_star_parent);
                if (p_star_parent.addr == result_found_at_node_addr) {
-		   platform_default_log("Ungetting node since we already have a pointer to it\n");    
+//		   platform_default_log("Ungetting node since we already have a pointer to it\n");    
                    trunk_node_unget(spl->cc, &p_star_parent);
                } else {
                    uint16 pivot_no =
@@ -7315,13 +7345,13 @@ found_final_answer_early:
                                break;
                            }
                        }
-                       if (!found) {
-                               uint8 num_elements = (p_star_parent.hdr->num_aux_pivots + 1) % 17;
+                       if (!found && p_star_parent.hdr->num_aux_pivots < 17) {
+                               uint8 num_elements = (p_star_parent.hdr->num_aux_pivots + 1);
 			       trunk_node_unget(spl->cc, &p_star_parent);
                                if (free_from_node_addr == spl->root_addr) {
-		                 platform_default_log("Query path free from root node\n");    
+//		                 platform_default_log("Query path free from root node\n");    
                                } else {
-		                 platform_default_log("Query path free from node %lu\n", free_from_node_addr);    
+//		                 platform_default_log("Query path free from node %lu\n", free_from_node_addr);    
                                }
                                trunk_node_get(spl->cc, free_from_node_addr, &p_star_parent);
                                trunk_node_claim(spl->cc, &p_star_parent);
@@ -7343,6 +7373,7 @@ found_final_answer_early:
            }
        }
    }
+   platform_free(spl->heap_id, aux_pivot);
    if (spl->cfg.use_stats) {
       threadid tid = platform_get_tid();
       if (!merge_accumulator_is_null(result)) {
