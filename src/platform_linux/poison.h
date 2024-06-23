@@ -29,7 +29,7 @@
 #pragma GCC poison strtol
 #pragma GCC poison strtoll
 #pragma GCC poison strtoul
-#pragma GCC poison strtoull
+//#pragma GCC poison strtoull
 
 /* =====================================
  * Everything below are things that have been platformized.

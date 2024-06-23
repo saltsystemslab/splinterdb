@@ -7111,7 +7111,7 @@ debug_only char * target_key = (char *) slice_data(target.user_slice);
          trunk_pivot_lookup(spl, &node, pdata, target, result);
       if (!should_continue) {
 	      aux_pivot.range_start = strtoull((char *)lower_bound.user_slice.data, &endptr, 10);
-aux_pivot.range_end = strtoull((char *)upper_bound.user_slice.data, &endptr, 10);
+          aux_pivot.range_end = strtoull((char *)upper_bound.user_slice.data, &endptr, 10);
           aux_pivot.node_addr = node.addr;
           aux_pivot.num_hops = height - h;
           result_found_at_node_addr = node.addr;
@@ -7142,57 +7142,11 @@ aux_pivot.range_end = strtoull((char *)upper_bound.user_slice.data, &endptr, 10)
 		   if (strcmp(target_key, "201763308439538123") == 0) {
 			   platform_default_log("Key\n");
 		   }
-               start = node.hdr->aux_pivot[i].range_start;
-               end = node.hdr->aux_pivot[i].range_end;
-               if (start.kind == NEGATIVE_INFINITY) {
-                   int comp = slice_lex_cmp(target.user_slice, end.user_slice);
-                   if (comp < 0) {
-                       idx = i;
-#if SPLINTER_DEBUG
-
-	       //debug_only char * target_str = (char *) slice_data(target.user_slice);
-	       //debug_only char * ub_str = (char *) slice_data(node.hdr->aux_pivot[idx].range_end.user_slice);
-	//       if (!(strcmp(target_str, ub_str) < 0))
-//		       platform_default_log("Incorrect bounds for P* pointer.\n");
-#endif
-                       break;
-                   }
-               } else if (end.kind == POSITIVE_INFINITY) {
-                   int comp = slice_lex_cmp(target.user_slice, start.user_slice);
-                   if (comp >= 0) {
-                       idx = i;
-#if SPLINTER_DEBUG
-
-	       //debug_only char * target_str = (char *) slice_data(target.user_slice);
-	       //debug_only char * lb_str = (char *) slice_data(node.hdr->aux_pivot[idx].range_start.user_slice);
-
-//	       if (!(strcmp(target_str, lb_str) >= 0))
-//		       platform_default_log("Incorrect bounds for P* pointer.\n");
-#endif
-                       break;
-                   }
-               } else {
-                   //! compare start first
-                   int comp_start = slice_lex_cmp(target.user_slice, start.user_slice);
-                   if (comp_start >= 0) {
-                       //! our key is greater than or equal to start key
-                       int comp_end = slice_lex_cmp(target.user_slice, end.user_slice);
-                       if (comp_end < 0) {
-                           idx = i;
-#if SPLINTER_DEBUG
-	       debug_only char * target_str = (char *) slice_data(target.user_slice);
-	       //debug_only char * lb_str = (char *) slice_data(node.hdr->aux_pivot[idx].range_start.user_slice);
-	       //debug_only char * ub_str = (char *) slice_data(node.hdr->aux_pivot[idx].range_end.user_slice);
-//	       if (strcmp(lb_str, "") == 0 && node.hdr->aux_pivot[idx].node_addr == 11919360) {
-//		       platform_default_log("Messed up ranges\n");
-//	       }
-//	       if (!(strcmp(target_str, lb_str) >= 0 && strcmp(target_str, ub_str) < 0))
-//		       platform_default_log("Incorrect bounds for P* pointer.\n");
-#endif
-                           break;
-                       }
-                   }
-               }
+           uint64_t target_int = strtoull((char *) target.user_slice.data, &endptr, 10);
+           if (start <= target_int && target_int < end) {
+               idx = i;
+               break;
+           }
            }
            if (idx != -1) {
                hops = node.hdr->aux_pivot[idx].num_hops;
@@ -7254,15 +7208,21 @@ aux_pivot.range_end = strtoull((char *)upper_bound.user_slice.data, &endptr, 10)
        if (pivot_no == node.hdr->num_pivot_keys - 1) {
            //! Means that this is the last pivot in this node. So upper bound
            //! will be the parent's upper bound.
-           lower_bound =  pivot_start_range;
+           if (pivot_start_range.kind == NEGATIVE_INFINITY)
+               lower_bound = 0;
+           else lower_bound = strtoull((char *)pivot_start_range.user_slice.data, &endptr, 10);
        } else if (pivot_no == 0) {
            //! Means that this is the first pivot in the node, so lower bound
            //! will be that of the parent.
-           upper_bound = ondisk_key_to_key(&trunk_get_pivot_data(spl, &node, pivot_no + 1)->pivot);
+           key next_pivot_key =trunk_get_pivot_data(spl, &node, pivot_no + 1)->pivot;
+           if (next_pivot_key.kind == POSITIVE_INFINITY)
+               upper_bound = UINT64_MAX;
+           else upper_bound = strtoull((char *)next_pivot_key.user_slice.data, &endptr, 10);
        } else {
            //! Pivot is somewhere in the middle, so get the lower and upper bound
-           lower_bound = pivot_start_range;
-           upper_bound = ondisk_key_to_key(&trunk_get_pivot_data(spl, &node, pivot_no + 1)->pivot);
+           key next_pivot_key =trunk_get_pivot_data(spl, &node, pivot_no + 1)->pivot;
+           lower_bound = strtoull((char *)pivot_start_range.user_slice.data, &endptr, 10);
+           upper_bound = strtoull((char *)next_pivot_key.user_slice.data, &endptr, 10);
        }
        trunk_node_unget(spl->cc, &node);
        node = child;
