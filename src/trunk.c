@@ -7091,11 +7091,17 @@ debug_only char * target_key = (char *) slice_data(target.user_slice);
    trunk_aux_pivot aux_pivot;
    uint16 hops = 1;
    uint64 result_found_at_node_addr = 0;
+
+   char * endptr;
+           uint64_t target_int = strtoull((char *) target.user_slice.data, &endptr, 10);
 //   bool query_path_free = FALSE;
    // release memtable lookup lock
    memtable_end_lookup(spl->mt_ctxt);
+
+		   if (strcmp(target_key, "922320260983147530") == 0) {
+			   platform_default_log("Key\n");
+		   }
    // look in index nodes
-   char * endptr;
    int16 height = trunk_node_height(&node);
    for (int16 h = height; h > 0; h = h - hops) {
        //! Check if there are P* pointers in the current node
@@ -7125,7 +7131,7 @@ debug_only char * target_key = (char *) slice_data(target.user_slice);
            for (int i = 0; i < node.hdr->num_aux_pivots; i++) {
 		   start = node.hdr->aux_pivot[i].range_start;
 		   end = node.hdr->aux_pivot[i].range_end;
-		   if (strcmp(target_key, "4535871784042367184") == 0) {
+		   if (strcmp(target_key, "922320260983147530") == 0) {
 			   platform_default_log("Key\n");
 		   }
 
@@ -7144,7 +7150,6 @@ debug_only char * target_key = (char *) slice_data(target.user_slice);
 		   if (strcmp(target_key, "201763308439538123") == 0) {
 			   platform_default_log("Key\n");
 		   }
-           uint64_t target_int = strtoull((char *) target.user_slice.data, &endptr, 10);
            if (start <= target_int && target_int < end) {
                idx = i;
                break;
@@ -7158,7 +7163,6 @@ debug_only char * target_key = (char *) slice_data(target.user_slice);
                }
                trunk_node_get(spl->cc, node.hdr->aux_pivot[idx].node_addr, &child);
 	       //platform_default_log("Using P* pointer to jump to node %lu with hops %d\n", child.addr, hops);
-
                trunk_node_unget(spl->cc, &node);
                node = child;
                use_p_star = TRUE;
@@ -7302,7 +7306,7 @@ found_final_answer_early:
                            trunk_find_pivot(spl, &p_star_parent, target, less_than_or_equal);
                    trunk_pivot_data *pivot = trunk_get_pivot_data(spl, &p_star_parent, pivot_no);
                    if (pivot->addr != result_found_at_node_addr) {
-                       bool32 found = TRUE;
+                       bool32 found = FALSE;
                        for (int i = 0; i < p_star_parent.hdr->num_aux_pivots; i++) {
                            if (p_star_parent.hdr->aux_pivot[i].node_addr == result_found_at_node_addr) {
                                found = TRUE;
