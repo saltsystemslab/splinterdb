@@ -7110,8 +7110,8 @@ debug_only char * target_key = (char *) slice_data(target.user_slice);
       bool32            should_continue =
          trunk_pivot_lookup(spl, &node, pdata, target, result);
       if (!should_continue) {
-	      aux_pivot.range_start = strtoull((char *)lower_bound.user_slice.data, &endptr, 10);
-          aux_pivot.range_end = strtoull((char *)upper_bound.user_slice.data, &endptr, 10);
+	      aux_pivot.range_start = lower_bound;
+          aux_pivot.range_end = upper_bound;
           aux_pivot.node_addr = node.addr;
           aux_pivot.num_hops = height - h;
           result_found_at_node_addr = node.addr;
@@ -7123,6 +7123,8 @@ debug_only char * target_key = (char *) slice_data(target.user_slice);
 
            int idx = -1;
            for (int i = 0; i < node.hdr->num_aux_pivots; i++) {
+		   start = node.hdr->aux_pivot[i].range_start;
+		   end = node.hdr->aux_pivot[i].range_end;
 		   if (strcmp(target_key, "4535871784042367184") == 0) {
 			   platform_default_log("Key\n");
 		   }
@@ -7214,15 +7216,17 @@ debug_only char * target_key = (char *) slice_data(target.user_slice);
        } else if (pivot_no == 0) {
            //! Means that this is the first pivot in the node, so lower bound
            //! will be that of the parent.
-           key next_pivot_key =trunk_get_pivot_data(spl, &node, pivot_no + 1)->pivot;
+           key next_pivot_key = ondisk_key_to_key(&trunk_get_pivot_data(spl, &node, pivot_no + 1)->pivot);
            if (next_pivot_key.kind == POSITIVE_INFINITY)
                upper_bound = UINT64_MAX;
            else upper_bound = strtoull((char *)next_pivot_key.user_slice.data, &endptr, 10);
        } else {
            //! Pivot is somewhere in the middle, so get the lower and upper bound
-           key next_pivot_key =trunk_get_pivot_data(spl, &node, pivot_no + 1)->pivot;
+	   key next_pivot_key = ondisk_key_to_key(&trunk_get_pivot_data(spl, &node, pivot_no + 1)->pivot);
            lower_bound = strtoull((char *)pivot_start_range.user_slice.data, &endptr, 10);
-           upper_bound = strtoull((char *)next_pivot_key.user_slice.data, &endptr, 10);
+	   if (next_pivot_key.kind == POSITIVE_INFINITY)
+		   upper_bound = UINT64_MAX;
+	   else upper_bound = strtoull((char *)next_pivot_key.user_slice.data, &endptr, 10);
        }
        trunk_node_unget(spl->cc, &node);
        node = child;
@@ -7249,8 +7253,8 @@ debug_only char * target_key = (char *) slice_data(target.user_slice);
 		   //}
    if (!should_continue) {
 
-aux_pivot.range_end = strtoull((char *)upper_bound.user_slice.data, &endptr, 10);
-aux_pivot.range_end = strtoull((char *)upper_bound.user_slice.data, &endptr, 10);
+	      aux_pivot.range_start = lower_bound;
+          aux_pivot.range_end = upper_bound;
        aux_pivot.node_addr = node.addr;
        aux_pivot.num_hops = height;
        result_found_at_node_addr = node.addr;
@@ -7298,7 +7302,7 @@ found_final_answer_early:
                            trunk_find_pivot(spl, &p_star_parent, target, less_than_or_equal);
                    trunk_pivot_data *pivot = trunk_get_pivot_data(spl, &p_star_parent, pivot_no);
                    if (pivot->addr != result_found_at_node_addr) {
-                       bool32 found = FALSE;
+                       bool32 found = TRUE;
                        for (int i = 0; i < p_star_parent.hdr->num_aux_pivots; i++) {
                            if (p_star_parent.hdr->aux_pivot[i].node_addr == result_found_at_node_addr) {
                                found = TRUE;
@@ -7333,7 +7337,6 @@ found_final_answer_early:
            }
        }
    }
-   platform_free(spl->heap_id, aux_pivot);
    if (spl->cfg.use_stats) {
       threadid tid = platform_get_tid();
       if (!merge_accumulator_is_null(result)) {
