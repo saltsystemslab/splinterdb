@@ -31,7 +31,7 @@
 // There are open issues in some tests for smaller key-sizes.
 // For now, restrict tests to use this minimum key-size.
 #define TEST_CONFIG_MIN_KEY_SIZE         ((int)sizeof(uint64))
-#define TEST_CONFIG_DEFAULT_KEY_SIZE     24
+#define TEST_CONFIG_DEFAULT_KEY_SIZE     100
 #define TEST_CONFIG_DEFAULT_MESSAGE_SIZE 100
 
 // Configs that are usually changed by different tests

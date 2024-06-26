@@ -242,7 +242,7 @@ write_latency_cdf(char *filename, latency_table table)
 }
 
 typedef struct ycsb_op {
-   char   cmd;
+   char   cmd[12];
    char   key[YCSB_KEY_SIZE];
    char   value[YCSB_DATA_SIZE];
    uint64 range_len;
@@ -337,49 +337,27 @@ ycsb_thread(void *arg)
       ycsb_op *ops = &params->ycsb_ops[my_batch];
       for (i = 0; i < batch_size; i++) {
          ops->start_time = platform_get_timestamp();
-         switch (ops->cmd) {
-            case 'r':
-            {
-               rc = trunk_lookup(
-                  spl, key_create(YCSB_KEY_SIZE, ops->key), &value);
-               platform_assert_status_ok(rc);
-               // if (!ops->found) {
-               //   char key_str[128];
-               //   trunk_key_to_string(spl, ops->key, key_str);
-               //   platform_default_log("Key %s not found\n", key_str);
-               //   trunk_print_lookup(spl, ops->key);
-               //   platform_assert(0);
-               //}
-               break;
-            }
-            case 'd':
-            case 'i':
-            case 'u':
-            {
-               message val =
-                  message_create(MESSAGE_TYPE_INSERT,
-                                 slice_create(YCSB_DATA_SIZE, ops->value));
-               rc = trunk_insert(spl, key_create(YCSB_KEY_SIZE, ops->key), val);
-               platform_assert_status_ok(rc);
-               break;
-            }
-            case 's':
-            {
-               rc = trunk_range(spl,
-                                key_create(YCSB_KEY_SIZE, ops->key),
-                                ops->range_len,
-                                nop_tuple_func,
-                                NULL);
-               platform_assert_status_ok(rc);
-               break;
-            }
-            default:
-            {
-               platform_error_log("Unknown YCSB command %c, skipping command\n",
-                                  ops->cmd);
-               break;
-            }
-         }
+          if (strcmp(ops->cmd, "Query") == 0) {
+              rc = trunk_lookup(spl, key_create(YCSB_KEY_SIZE, ops->key), &value);
+              platform_assert_status_ok(rc);
+              // if (!ops->found) {
+              //   char key_str[128];
+              //   trunk_key_to_string(spl, ops->key, key_str);
+              //   platform_default_log("Key %s not found\n", key_str);
+              //   trunk_print_lookup(spl, ops->key);
+              //   platform_assert(0);
+              // }
+          } else if (strcmp(ops->cmd, "d") == 0 || strcmp(ops->cmd, "i") == 0 || strcmp(ops->cmd, "u") == 0) {
+              message val = message_create(MESSAGE_TYPE_INSERT, slice_create(YCSB_DATA_SIZE, ops->value));
+              rc = trunk_insert(spl, key_create(YCSB_KEY_SIZE, ops->key), val);
+              platform_assert_status_ok(rc);
+          } else if (strcmp(ops->cmd, "s") == 0) {
+              rc = trunk_range(spl, key_create(YCSB_KEY_SIZE, ops->key), ops->range_len, nop_tuple_func, NULL);
+              platform_assert_status_ok(rc);
+          } else {
+              platform_error_log("Unknown YCSB command %s, skipping command\n", ops->cmd);
+          }
+
          ops->end_time = platform_get_timestamp();
          ops++;
       }
@@ -581,22 +559,22 @@ parse_ycsb_log_file(void *arg)
       platform_assert(ret > 0);
       data_handle *dh = (data_handle *)&result[i].value;
       dh->ref_count   = 1;
-      ret = sscanf(buffer, "%c %64s", &result[i].cmd, result[i].key);
+      ret = sscanf(buffer, "%15s %64s", &result[i].cmd, result[i].key);
 
       platform_assert(ret == 2);
-      if (result[i].cmd == 'r') {
+      if (strcmp(result[i].cmd, "Query") == 0) {
          platform_assert(ret == 2);
       } else if (result[i].cmd == 'd') {
          platform_assert(ret == 2);
-      } else if (result[i].cmd == 'u') {
+      } else if (strcmp(result[i].cmd, "Updating") == 0) {
          platform_assert(ret == 2);
          random_bytes(&rs, (char *)dh->data, YCSB_DATA_SIZE - 2);
-      } else if (result[i].cmd == 'i') {
+      } else if (strcmp(result[i].cmd, "Inserting") == 0) {
          platform_assert(ret == 2);
          random_bytes(&rs, (char *)dh->data, YCSB_DATA_SIZE - 2);
       } else if (result[i].cmd == 's') {
          ret = sscanf(buffer,
-                      "%c %64s %lu\n",
+                      "%15s %64s %lu\n",
                       &result[i].cmd,
                       result[i].key,
                       &result[i].range_len);
@@ -649,7 +627,7 @@ load_ycsb_logs(int          argc,
 {
    uint64 _nphases            = 1;
    uint64 num_threads         = 0;
-   bool32 mlock_log           = TRUE;
+   bool32 mlock_log           = FALSE;
    char  *measurement_command = NULL;
    uint64 log_size_bytes      = 0;
    *use_existing              = FALSE;
@@ -798,33 +776,24 @@ compute_log_latency_tables(ycsb_log_params *params)
 
    uint64 i = 0;
    for (i = 0; i < params->total_ops; i++) {
-      switch (ops->cmd) {
-         case 'r':
-            if (ops->found) {
-               record_latency(params->tables.pos_queries,
-                              ops->end_time - ops->start_time);
-            } else {
-               record_latency(params->tables.neg_queries,
-                              ops->end_time - ops->start_time);
-            }
-            break;
-         case 'd':
-            record_latency(params->tables.deletes,
-                           ops->end_time - ops->start_time);
-            break;
-         case 'i':
-            record_latency(params->tables.inserts,
-                           ops->end_time - ops->start_time);
-            break;
-         case 'u':
-            record_latency(params->tables.updates,
-                           ops->end_time - ops->start_time);
-            break;
-         case 's':
-            record_latency(params->tables.scans,
-                           ops->end_time - ops->start_time);
-            break;
-      }
+       if (strcmp(ops->cmd, "Query") == 0) {
+           if (ops->found) {
+               record_latency(params->tables.pos_queries, ops->end_time - ops->start_time);
+           } else {
+               record_latency(params->tables.neg_queries, ops->end_time - ops->start_time);
+           }
+       } else if (strcmp(ops->cmd, "d") == 0) {
+           record_latency(params->tables.deletes, ops->end_time - ops->start_time);
+       } else if (strcmp(ops->cmd, "Inserting") == 0) {
+           record_latency(params->tables.inserts, ops->end_time - ops->start_time);
+       } else if (strcmp(ops->cmd, "Updating") == 0) {
+           record_latency(params->tables.updates, ops->end_time - ops->start_time);
+       } else if (strcmp(ops->cmd, "s") == 0) {
+           record_latency(params->tables.scans, ops->end_time - ops->start_time);
+       } else {
+           // Handle unknown command
+           platform_assert(0);
+       }
       ops++;
    }
    sum_latency_tables(params->tables.all_queries,
@@ -1232,7 +1201,7 @@ ycsb_test(int argc, char *argv[])
    platform_default_log("overhead %lu MiB buffer %lu MiB\n",
                         B_TO_MiB(overhead_bytes),
                         B_TO_MiB(buffer_bytes));
-   cache_cfg.capacity      = memory_bytes - buffer_bytes;
+   cache_cfg.capacity      = 1073741824;
    cache_cfg.page_capacity = cache_cfg.capacity / cache_cfg.io_cfg->page_size;
 
    uint64 al_size = allocator_cfg.extent_capacity * sizeof(uint8);
