@@ -504,7 +504,9 @@ rc_allocator_inc_ref(rc_allocator *al, uint64 addr)
 
    uint64 extent_no = addr / al->cfg->io_cfg->extent_size;
    debug_assert(extent_no < al->cfg->extent_capacity);
-
+#if SPLINTER_DEBUG
+   //platform_default_log("Refcount for address %lu before incrementing = %d\n",addr, al->ref_count[extent_no]);
+#endif
    uint8 ref_count = __sync_add_and_fetch(&al->ref_count[extent_no], 1);
    platform_assert(ref_count != 1 && ref_count != 0);
    if (SHOULD_TRACE(addr)) {
@@ -537,6 +539,9 @@ rc_allocator_dec_ref(rc_allocator *al, uint64 addr, page_type type)
                    ref_count);
 
    if (ref_count == 0) {
+#if SPLINTER_DEBUG
+	   //platform_default_log("Ref count is 0 for address %lu and extent no %lu\n", addr, extent_no);
+#endif
       platform_assert(type != PAGE_TYPE_INVALID);
       __sync_sub_and_fetch(&al->stats.curr_allocated, 1);
       __sync_add_and_fetch(&al->stats.extent_deallocs[type], 1);

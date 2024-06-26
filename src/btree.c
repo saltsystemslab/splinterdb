@@ -1241,6 +1241,9 @@ btree_inc_ref_range(cache              *cc,
                     key                 end_key)
 {
    debug_assert(btree_key_compare(cfg, start_key, end_key) <= 0);
+#if SPLINTER_DEBUG
+//   platform_default_log("Incrementing refcount for start key %s and end key %s in branch %lu\n", (char * )slice_data(start_key.user_slice), (char *)slice_data(end_key.user_slice), root_addr);
+#endif
    uint64 meta_page_addr = btree_root_to_meta_addr(cfg, root_addr, 0);
    mini_keyed_inc_ref(
       cc, cfg->data_cfg, PAGE_TYPE_BRANCH, meta_page_addr, start_key, end_key);
@@ -2121,6 +2124,27 @@ btree_lookup_with_ref(cache        *cc,        // IN
    } else {
       btree_node_unget(cc, cfg, node);
    }
+}
+
+void
+btree_check_num_keys_in_root_pivot_range(cache *cc,
+                                          btree_config *cfg,
+                                          uint64 root_addr,
+                                          page_type type,
+                                          key lower_bound,
+                                          key upper_bound,
+                                          bool32 *found) {
+    btree_node node;
+    btree_node_get(cc, cfg, &node, PAGE_TYPE_BRANCH);
+    for (uint8 pivot_no = 0; pivot_no < node.hdr->num_entries; pivot_no = pivot_no + 1) {
+        leaf_entry *entry = btree_get_leaf_entry(cfg, node.hdr, pivot_no);
+        key entry_key = leaf_entry_key(entry);
+        if (slice_lex_cmp(entry_key.user_slice, lower_bound.user_slice) >= 0
+        && slice_lex_cmp(entry_key.user_slice, upper_bound.user_slice) < 0) {
+            *found = TRUE;
+            break;
+        }
+    }
 }
 
 platform_status
